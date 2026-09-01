@@ -6,9 +6,10 @@
 
 1. 用户可选择“按菜名查做法”或“按食材找灵感”。
 2. `recipe-router` 识别意图，`recipe-grounder` 检索 302 道 HowToCook 索引与 20 道手工金标菜。
-3. 食材模式优先返回不同技法；菜名模式优先保证菜品身份。
-4. `complex-dish-planner` 区分主动时间、总历时和提前准备，不把复杂菜伪造成快手菜。
-5. `recipe-critic` 与确定性工具检查时间、复杂度和过敏原。
+3. `inventory-composer` 把真实菜谱作为技法锚点，在零采购约束下适配用户库存。
+4. 食材模式支持“做成一道菜 / 搭配一餐”，并显示库存覆盖率、新增采购和基础调料。
+5. `complex-dish-planner` 区分主动时间、总历时和提前准备，不把复杂菜伪造成快手菜。
+6. `recipe-critic` 与确定性工具检查时间、复杂度、过敏原和库存闭包。
 6. Agent 在执行前暂停，等待用户批准。
 7. 用户进入分步烹饪模式，进度自动保存；遇到缺料时只重规划未完成步骤。
 8. Trace 面板展示 Skill、检索、guardrail、审批和状态事件。
@@ -20,7 +21,8 @@ flowchart LR
   Router --> Grounder[recipe-grounder]
   Grounder --> Index[HowToCook 本地索引]
   Grounder --> Gold[20 道手工金标菜]
-  Grounder --> Complex[complex-dish-planner]
+  Grounder --> Inventory[inventory-composer]
+  Inventory --> Complex[complex-dish-planner]
   Complex --> Critic[recipe-critic]
   Critic --> Time[时间与复杂度校验]
   Critic --> Allergy[过敏原硬拦截]
@@ -43,7 +45,7 @@ flowchart LR
 - Next.js Route Handlers
 - HowToCook 静态本地索引（Unlicense），部署后无需第三方菜谱 API
 - 20 道手工校验高价值菜，覆盖炒、蒸、煮、炖、煨、炸、烤、凉拌等技法
-- 4 个项目级烹饪 Skill，位于 `.cursor/skills/`
+- 5 个项目级烹饪 Skill，位于 `.cursor/skills/`
 - 可选 OpenAI Responses API；默认 Local RAG，未命中时才使用模型兜底
 
 ## 本地运行

@@ -51,6 +51,9 @@ const defaultInput: PlanInput = {
   mode: "ingredients",
   dishName: "丝瓜鸡蛋汤",
   ingredients: "鸡胸肉、西兰花、胡萝卜、米饭",
+  planScope: "meal",
+  pantry: "食用油、盐、水、生抽",
+  zeroPurchase: true,
   taste: "少油、咸鲜、不辣",
   allergens: "花生",
   servings: 2,
@@ -373,6 +376,9 @@ export default function Home() {
           allergens: input.allergens,
           maxMinutes: input.maxMinutes,
           currentStep,
+          inventory: input.ingredients,
+          pantry: input.pantry,
+          zeroPurchase: input.zeroPurchase,
         }),
       });
       const payload = (await response.json()) as ReplanResponse & { error?: string };
@@ -485,7 +491,7 @@ export default function Home() {
       </div>
 
       <div className="hero-stats" aria-label="Harness 能力摘要">
-        <div><strong>04</strong><span>烹饪 Skills</span></div>
+        <div><strong>05</strong><span>烹饪 Skills</span></div>
         <div><strong>01</strong><span>人工审批点</span></div>
         <div><strong>06</strong><span>运行状态</span></div>
         <div className="hero-stat-copy">模型可以灵活，边界必须清楚。</div>
@@ -557,17 +563,61 @@ export default function Home() {
                 <small>会先查本地可信菜谱；复杂菜不会被强行压成 30 分钟。</small>
               </label>
             ) : (
-              <label className="field mode-field">
-                <span>现有食材</span>
-                <textarea
-                  value={input.ingredients}
-                  onChange={(event) => setInput((current) => ({ ...current, ingredients: event.target.value }))}
-                  placeholder="例如：鸡胸肉、西兰花、胡萝卜"
-                  rows={4}
-                  disabled={isBusy}
-                />
-                <small>用逗号分隔，系统会优先返回不同烹饪技法。</small>
-              </label>
+              <div className="ingredient-mode-fields mode-field">
+                <label className="field">
+                  <span>必须消耗的现有食材</span>
+                  <textarea
+                    value={input.ingredients}
+                    onChange={(event) => setInput((current) => ({ ...current, ingredients: event.target.value }))}
+                    placeholder="例如：鸡胸肉、西兰花、胡萝卜、米饭"
+                    rows={4}
+                    disabled={isBusy}
+                  />
+                  <small>用逗号分隔。零采购方案必须覆盖这里的全部食材。</small>
+                </label>
+
+                <fieldset className="inventory-rules">
+                  <legend>清冰箱方式</legend>
+                  <div className="scope-switch" role="radiogroup" aria-label="清冰箱规划方式">
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={input.planScope === "single"}
+                      className={input.planScope === "single" ? "active" : ""}
+                      onClick={() => setInput((current) => ({ ...current, planScope: "single" }))}
+                      disabled={isBusy}
+                    >
+                      做成一道菜
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={input.planScope === "meal"}
+                      className={input.planScope === "meal" ? "active" : ""}
+                      onClick={() => setInput((current) => ({ ...current, planScope: "meal" }))}
+                      disabled={isBusy}
+                    >
+                      搭配一餐
+                    </button>
+                  </div>
+
+                  <label className="field pantry-field">
+                    <span>家中已有基础调料</span>
+                    <input
+                      value={input.pantry}
+                      onChange={(event) => setInput((current) => ({ ...current, pantry: event.target.value }))}
+                      placeholder="食用油、盐、水、生抽"
+                      disabled={isBusy}
+                    />
+                    <small>只会调用这里明确写出的调料；鸡蛋、洋葱、牛奶等不会被当成基础调料。</small>
+                  </label>
+
+                  <div className="zero-purchase-lock" role="status">
+                    <LockKeyhole size={16} />
+                    <span><strong>零采购硬约束</strong> 库存外非基础食材会被直接拦截。</span>
+                  </div>
+                </fieldset>
+              </div>
             )}
 
             <label className="field">
@@ -665,7 +715,7 @@ export default function Home() {
                 <div className="pulse-ring"><Sparkles size={28} /></div>
               </div>
               <h3>正在组合一份可执行计划</h3>
-              <p>Agent 会先生成候选，再把每一套方案交给时间与过敏原工具校验。</p>
+              <p>Agent 会先检索真实技法，再进行库存适配、时间、过敏原与零采购校验。</p>
               <div className="skeleton-lines" aria-hidden="true"><i /><i /><i /></div>
             </div>
           )}
@@ -711,6 +761,17 @@ export default function Home() {
                           {recipe.technique && <span>技法 · {recipe.technique}</span>}
                           {recipe.difficulty && <span>难度 · {recipe.difficulty}</span>}
                           {recipe.activeMinutes && <span>动手 · {recipe.activeMinutes} 分钟</span>}
+                        </div>
+                      )}
+                      {recipe.inventoryCoverage && (
+                        <div className="inventory-proof" aria-label="库存适配结果">
+                          <span className="inventory-proof-ok">
+                            <CheckCircle2 size={14} /> 现有食材 {recipe.inventoryCoverage.used.length}/{recipe.inventoryCoverage.used.length + recipe.inventoryCoverage.unused.length}
+                          </span>
+                          <span className={recipe.inventoryCoverage.missing.length ? "inventory-proof-bad" : "inventory-proof-ok"}>
+                            新增采购 {recipe.inventoryCoverage.missing.length}
+                          </span>
+                          <small>基础调料：{recipe.inventoryCoverage.pantryUsed.join("、") || "无"}</small>
                         </div>
                       )}
                       <div className="tag-row">{recipe.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>

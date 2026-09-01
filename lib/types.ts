@@ -27,7 +27,17 @@ export interface CookingStep {
 }
 
 export type PlanMode = "dish" | "ingredients";
+export type PlanScope = "single" | "meal";
 export type RecipeDifficulty = "简单" | "中等" | "困难" | "大师级";
+
+export interface InventoryCoverage {
+  used: string[];
+  unused: string[];
+  missing: string[];
+  pantryUsed: string[];
+  ratio: number;
+  zeroPurchase: boolean;
+}
 
 export interface RecipeSource {
   title: string;
@@ -61,12 +71,16 @@ export interface Recipe {
   confidence?: number;
   source?: RecipeSource;
   feasibility?: RecipeFeasibility;
+  inventoryCoverage?: InventoryCoverage;
 }
 
 export interface PlanInput {
   mode: PlanMode;
   dishName: string;
   ingredients: string;
+  planScope: PlanScope;
+  pantry: string;
+  zeroPurchase: boolean;
   taste: string;
   allergens: string;
   servings: number;
@@ -74,7 +88,7 @@ export interface PlanInput {
 }
 
 export interface GuardrailResult {
-  tool: "validate_cooking_time" | "check_allergens" | "check_recipe_complexity";
+  tool: "validate_cooking_time" | "check_allergens" | "check_recipe_complexity" | "validate_inventory";
   passed: boolean;
   detail: string;
   severity?: "soft" | "hard";
@@ -99,6 +113,9 @@ export interface ReplanInput {
   allergens: string;
   maxMinutes: number;
   currentStep: number;
+  inventory?: string;
+  pantry?: string;
+  zeroPurchase?: boolean;
 }
 
 export interface ReplanResponse {

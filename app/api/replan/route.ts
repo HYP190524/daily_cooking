@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { hasHardFailure, runGuardrails } from "@/lib/guardrails";
 import { createMockReplan, trace } from "@/lib/mock-engine";
 import { canUseOpenAI, createOpenAIReplan } from "@/lib/openai";
-import type { Recipe, ReplanInput, ReplanResponse } from "@/lib/types";
+import type { PlanInput, Recipe, ReplanInput, ReplanResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -25,6 +25,9 @@ function parseInput(value: unknown): ReplanInput | null {
       typeof input.currentStep === "number"
         ? Math.max(0, Math.min(input.recipe.steps.length - 1, Math.round(input.currentStep)))
         : 0,
+    inventory: typeof input.inventory === "string" ? input.inventory.trim().slice(0, 240) : undefined,
+    pantry: typeof input.pantry === "string" ? input.pantry.trim().slice(0, 160) : undefined,
+    zeroPurchase: input.zeroPurchase === true,
   };
 }
 
@@ -67,7 +70,21 @@ export async function POST(request: Request) {
     traces.push(trace("model", "局部重规划", "Mock Agent 更新未执行步骤。", "success", 240));
   }
 
-  const checks = runGuardrails(recipe, input.allergens, input.maxMinutes, !recipe.feasibility?.fitsTime);
+  const guardrailInput: PlanInput | undefined = input.zeroPurchase
+    ? {
+        mode: "ingredients",
+        dishName: "",
+        ingredients: recipe.inventoryCoverage?.used.join("、") ?? input.inventory ?? "",
+        planScope: "single",
+        pantry: input.pantry ?? recipe.inventoryCoverage?.pantryUsed.join("、") ?? "",
+        zeroPurchase: true,
+        taste: "",
+        allergens: input.allergens,
+        servings: recipe.servings,
+        maxMinutes: input.maxMinutes,
+      }
+    : undefined;
+  const checks = runGuardrails(recipe, input.allergens, input.maxMinutes, !recipe.feasibility?.fitsTime, guardrailInput);
   const passed = !hasHardFailure(checks);
   traces.push(
     trace(

@@ -1,4 +1,5 @@
 import type { PlanInput, Recipe, ReplanInput, TraceEvent } from "./types";
+import { composeInventoryRecipes } from "./inventory-composer";
 import { searchLocalRecipes } from "./recipe-index";
 
 function id(prefix: string) {
@@ -123,7 +124,10 @@ function buildSecondaryRecipe(input: PlanInput, ingredients: string[]): Recipe {
 }
 
 export function createMockPlan(input: PlanInput): Recipe[] {
-  const local = searchLocalRecipes(input);
+  const local = searchLocalRecipes(input, input.mode === "ingredients" ? { limit: 6, diversify: false } : undefined);
+  if (input.mode === "ingredients" && input.zeroPurchase) {
+    return composeInventoryRecipes(input, local.recipes, 2);
+  }
   if (local.recipes.length > 0) return local.recipes;
   if (input.mode === "dish") return [];
 
@@ -151,14 +155,15 @@ function inferMissingIngredient(issue: string) {
 
 export function createMockReplan(input: ReplanInput): Recipe {
   const missing = inferMissingIngredient(input.issue);
-  let replacement = "现有蔬菜";
+  const availableInventory = input.inventory ? parseIngredients(input.inventory) : input.recipe.inventoryCoverage?.used ?? [];
+  let replacement = availableInventory.find((item) => !missing || !item.includes(missing)) ?? "现有食材";
   let matcher: RegExp | null = missing ? new RegExp(missing, "g") : null;
 
   for (const [source, candidate] of replacements) {
     const pattern = new RegExp(source);
     if (pattern.test(input.issue) || input.recipe.ingredients.some((item) => pattern.test(item))) {
       matcher = new RegExp(source, "g");
-      replacement = candidate;
+      replacement = availableInventory.find((item) => !pattern.test(item)) ?? candidate;
       break;
     }
   }
@@ -188,5 +193,13 @@ export function createMockReplan(input: ReplanInput): Recipe {
     tags: [...input.recipe.tags.filter((tag) => tag !== "已重规划"), "已重规划"],
     rationale: `保留已完成步骤，仅从第 ${input.currentStep + 1} 步开始替换为 ${replacement}，避免整份计划重做。`,
     feasibility: input.recipe.feasibility,
+    inventoryCoverage: input.recipe.inventoryCoverage
+      ? {
+          ...input.recipe.inventoryCoverage,
+          used: input.recipe.inventoryCoverage.used.filter((item) => !missing || !item.includes(missing)),
+          pantryUsed: input.recipe.inventoryCoverage.pantryUsed,
+          missing: [],
+        }
+      : undefined,
   };
 }

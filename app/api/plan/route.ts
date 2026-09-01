@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { hasHardFailure, runGuardrails } from "@/lib/guardrails";
 import { createMockPlan, trace } from "@/lib/mock-engine";
 import { canUseOpenAI, createOpenAIPlan } from "@/lib/openai";
+import { composeInventoryRecipes } from "@/lib/inventory-composer";
 import { pickDiverseRecipes, searchLocalRecipes } from "@/lib/recipe-index";
 import type { PlanInput, PlanResponse, Recipe } from "@/lib/types";
 
@@ -18,6 +19,9 @@ function parseInput(value: unknown): PlanInput | null {
     mode,
     dishName,
     ingredients,
+    planScope: input.planScope === "single" ? "single" : "meal",
+    pantry: typeof input.pantry === "string" ? input.pantry.trim().slice(0, 160) : "食用油、盐、水、生抽",
+    zeroPurchase: input.zeroPurchase !== false,
     taste: typeof input.taste === "string" ? input.taste.trim().slice(0, 80) : "",
     allergens: typeof input.allergens === "string" ? input.allergens.trim().slice(0, 120) : "",
     servings: typeof input.servings === "number" ? Math.min(8, Math.max(1, Math.round(input.servings))) : 2,
@@ -28,7 +32,7 @@ function parseInput(value: unknown): PlanInput | null {
 function evaluateRecipes(recipes: Recipe[], input: PlanInput) {
   const guardrails: PlanResponse["guardrails"] = {};
   for (const recipe of recipes) {
-    guardrails[recipe.id] = runGuardrails(recipe, input.allergens, input.maxMinutes, input.mode === "dish");
+    guardrails[recipe.id] = runGuardrails(recipe, input.allergens, input.maxMinutes, input.mode === "dish", input);
   }
   return guardrails;
 }
@@ -105,6 +109,23 @@ export async function POST(request: Request) {
     traces.push(trace("model", "确定性兜底", recipes.length ? "根据食材属性选择技法。" : "未生成未经来源支持的指定菜。", recipes.length ? "success" : "warning", 22));
   }
 
+  if (input.mode === "ingredients" && input.zeroPurchase) {
+    const adapted = composeInventoryRecipes(input, localResult.recipes, 2);
+    recipes = [...recipes, ...adapted].filter(
+      (recipe, index, all) => all.findIndex((item) => item.name === recipe.name) === index,
+    );
+    notice = "已启用零采购清冰箱模式：现成菜谱只作技法参考，最终方案只能使用现有食材与已声明常备调料。";
+    traces.push(
+      trace(
+        "model",
+        "inventory-composer · 库存适配",
+        `把真实菜谱作为技法锚点，生成 ${adapted.length} 套库存闭包方案。`,
+        "success",
+        26,
+      ),
+    );
+  }
+
   if (recipes.length === 0) {
     traces.push(trace("state", "停止执行", "指定菜名未在可信索引中命中，未编造做法。", "warning"));
     return NextResponse.json({ error: "本地菜谱库暂未找到这道菜。请尝试更完整的菜名，或改用“按食材推荐”。", traces }, { status: 404 });
@@ -139,12 +160,29 @@ export async function POST(request: Request) {
     ),
   );
 
+  if (input.mode === "ingredients" && input.zeroPurchase) {
+    const inventoryRejectedCount = recipes.filter((recipe) =>
+      guardrails[recipe.id].some((result) => result.tool === "validate_inventory" && !result.passed),
+    ).length;
+    traces.push(
+      trace(
+        "guardrail",
+        "zero-purchase-validator · 库存闭包",
+        inventoryRejectedCount
+          ? `${inventoryRejectedCount} 套原始菜谱因新增食材或库存覆盖不足被拦截；库存适配方案继续候选。`
+          : "所有候选均做到库存覆盖 100%、新增采购 0 项。",
+        inventoryRejectedCount ? "warning" : "success",
+        14,
+      ),
+    );
+  }
+
   let finalRecipes = input.mode === "ingredients"
     ? pickDiverseRecipes(acceptedRecipes, 2)
     : acceptedRecipes.slice(0, 2);
   if (finalRecipes.length === 0) {
     const saferInput = { ...input, ingredients: input.ingredients };
-    finalRecipes = createMockPlan(saferInput).filter((recipe) => !hasHardFailure(runGuardrails(recipe, input.allergens, input.maxMinutes, input.mode === "dish")));
+    finalRecipes = createMockPlan(saferInput).filter((recipe) => !hasHardFailure(runGuardrails(recipe, input.allergens, input.maxMinutes, input.mode === "dish", input)));
   }
 
   if (finalRecipes.length === 0) {

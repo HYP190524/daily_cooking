@@ -18,6 +18,7 @@ const indexedRecipes = howToCookIndex.recipes as IndexedRecipe[];
 const baseIngredients = ["盐", "水", "食用油", "生抽", "糖", "姜", "葱", "大蒜"];
 const ingredientAliasGroups = [
   ["琵琶腿", "鸡腿", "鸡小腿", "手枪腿", "大鸡腿", "鸡腿肉"],
+  ["鸡胸肉", "鸡胸", "鸡脯肉"],
   ["番茄", "西红柿"],
   ["马铃薯", "土豆"],
   ["青瓜", "黄瓜"],
@@ -47,13 +48,13 @@ export function splitIngredients(value: string) {
     .filter((item) => item.length > 0);
 }
 
-function textMatches(term: string, candidate: string) {
+export function textMatches(term: string, candidate: string) {
   const left = normalizeQuery(term);
   const right = normalizeQuery(candidate);
-  return Boolean(left && right && (left.includes(right) || right.includes(left)));
+  return Boolean(left && right && (left === right || right.includes(left)));
 }
 
-function ingredientMatchQuality(term: string, candidate: string) {
+export function ingredientMatchQuality(term: string, candidate: string) {
   if (textMatches(term, candidate)) return 3;
   const group = ingredientAliasGroups.find((aliases) => aliases.some((alias) => textMatches(term, alias)));
   if (!group) return 0;
@@ -173,7 +174,10 @@ function ingredientScore(wanted: string[], recipeIngredients: string[], totalMin
   const coverage = wanted.length ? matches / wanted.length : 0;
   const overrun = Math.max(0, totalMinutes - maxMinutes);
   const timeScore = overrun === 0 ? 12 : -Math.min(60, overrun * 1.5);
-  return { matches, score: coverage * 100 + matches * 8 + quality * 12 + timeScore };
+  const primaryMatched = wanted[0]
+    ? recipeIngredients.some((ingredient) => ingredientMatchQuality(wanted[0], ingredient) > 0)
+    : false;
+  return { matches, primaryMatched, coverage, score: coverage * 100 + matches * 8 + quality * 12 + timeScore };
 }
 
 export interface LocalPlanResult {
@@ -252,15 +256,18 @@ export function searchLocalRecipes(input: PlanInput, options: LocalSearchOptions
   const candidates = [
     ...goldRecipes.map((recipe) => {
       const ranked = ingredientScore(wanted, recipe.ingredients, recipe.totalMinutes, input.maxMinutes);
-      return { recipe: fromGold(recipe, input), matches: ranked.matches, score: ranked.score + (ranked.matches > 0 ? 8 : 0) };
+      return { recipe: fromGold(recipe, input), ...ranked, score: ranked.score + (ranked.matches > 0 ? 8 : 0) };
     }),
     ...indexedRecipes.map((recipe) => {
       const totalMinutes = Math.min(120, Math.max(15, 10 + recipe.difficulty * 7 + Math.min(recipe.steps.length, 7) * 2));
       const ranked = ingredientScore(wanted, recipe.ingredients, totalMinutes, input.maxMinutes);
-      return { recipe: fromIndex(recipe, input), matches: ranked.matches, score: ranked.score };
+      return { recipe: fromIndex(recipe, input), ...ranked, score: ranked.score };
     }),
   ]
-    .filter((candidate) => candidate.matches > 0)
+    .filter((candidate) => {
+      const minimumMatches = wanted.length <= 1 ? 1 : Math.max(2, Math.ceil(wanted.length / 2));
+      return candidate.primaryMatched && candidate.matches >= minimumMatches;
+    })
     .sort((a, b) => b.score - a.score);
 
   const rankedRecipes = candidates.map((candidate) => candidate.recipe);

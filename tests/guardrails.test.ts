@@ -8,6 +8,9 @@ const input: PlanInput = {
   mode: "ingredients",
   dishName: "",
   ingredients: "鸡胸肉、西兰花、胡萝卜、米饭",
+  planScope: "meal",
+  pantry: "食用油、盐、水、生抽",
+  zeroPurchase: true,
   taste: "少油、不辣",
   allergens: "花生",
   servings: 2,
@@ -31,7 +34,7 @@ test("allergen guardrail fails closed when a declared allergen appears", () => {
   assert.match(result.detail, /潜在风险/);
 });
 
-test("replan keeps completed steps and substitutes future egg references", () => {
+test("replan keeps completed steps and substitutes future egg references from inventory", () => {
   const [recipe] = createMockPlan({ ...input, ingredients: "鸡蛋、西红柿、青菜" });
   const replanned = createMockReplan({
     recipe,
@@ -42,5 +45,7 @@ test("replan keeps completed steps and substitutes future egg references", () =>
   });
   assert.deepEqual(replanned.steps[0], recipe.steps[0]);
   assert.equal(replanned.tags.includes("已重规划"), true);
-  assert.equal(replanned.steps.slice(1).some((step) => /嫩豆腐/.test(step.instruction + step.title)), true);
+  assert.equal(replanned.steps.slice(1).some((step) => /鸡蛋|蛋液|蛋黄|蛋白/.test(step.instruction + step.title)), false);
+  assert.equal(replanned.steps.slice(1).some((step) => /西红柿|青菜/.test(step.instruction + step.title)), true);
+  assert.equal(replanned.ingredients.some((item) => /嫩豆腐/.test(item)), false);
 });

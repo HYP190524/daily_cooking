@@ -1,4 +1,5 @@
-import type { GuardrailResult, Recipe } from "./types";
+import { analyzeInventoryCoverage } from "./inventory-composer";
+import type { GuardrailResult, PlanInput, Recipe } from "./types";
 
 const allergenAliases: Record<string, string[]> = {
   花生: ["花生", "花生酱", "花生油"],
@@ -72,8 +73,41 @@ export function checkRecipeComplexity(recipe: Recipe): GuardrailResult {
   };
 }
 
-export function runGuardrails(recipe: Recipe, allergens: string, maxMinutes: number, allowTimeOverrun = false) {
-  return [validateCookingTime(recipe, maxMinutes, allowTimeOverrun), checkAllergens(recipe, allergens), checkRecipeComplexity(recipe)];
+export function validateInventory(recipe: Recipe, input?: PlanInput): GuardrailResult {
+  if (!input || input.mode !== "ingredients" || !input.zeroPurchase) {
+    return {
+      tool: "validate_inventory",
+      passed: true,
+      severity: "hard",
+      detail: "当前任务不启用零采购库存校验。",
+    };
+  }
+
+  const coverage = analyzeInventoryCoverage(recipe, input);
+  const passed = coverage.missing.length === 0 && coverage.unused.length === 0;
+  return {
+    tool: "validate_inventory",
+    passed,
+    severity: "hard",
+    detail: passed
+      ? `库存覆盖 ${coverage.used.length}/${coverage.used.length}，新增采购 0 项；基础调料：${coverage.pantryUsed.join("、") || "无"}。`
+      : `零采购校验未通过：${coverage.missing.length ? `需新增 ${coverage.missing.join("、")}` : "无需新增食材"}${coverage.unused.length ? `；未使用 ${coverage.unused.join("、")}` : ""}。`,
+  };
+}
+
+export function runGuardrails(
+  recipe: Recipe,
+  allergens: string,
+  maxMinutes: number,
+  allowTimeOverrun = false,
+  input?: PlanInput,
+) {
+  return [
+    validateCookingTime(recipe, maxMinutes, allowTimeOverrun),
+    checkAllergens(recipe, allergens),
+    checkRecipeComplexity(recipe),
+    validateInventory(recipe, input),
+  ];
 }
 
 export function hasHardFailure(results: GuardrailResult[]) {

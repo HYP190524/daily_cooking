@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { goldRecipes } from "../data/gold-recipes";
 import { checkRecipeComplexity, hasHardFailure, runGuardrails } from "../lib/guardrails";
-import { getTechniqueCoverage, pickDiverseRecipes, searchLocalRecipes } from "../lib/recipe-index";
+import { composeInventoryRecipes } from "../lib/inventory-composer";
+import { getTechniqueCoverage, ingredientMatchQuality, pickDiverseRecipes, searchLocalRecipes } from "../lib/recipe-index";
 import type { PlanInput } from "../lib/types";
 
 function input(overrides: Partial<PlanInput>): PlanInput {
@@ -10,6 +11,9 @@ function input(overrides: Partial<PlanInput>): PlanInput {
     mode: "ingredients",
     dishName: "",
     ingredients: "丝瓜、鸡蛋",
+    planScope: "meal",
+    pantry: "食用油、盐、水、生抽",
+    zeroPurchase: true,
     taste: "家常",
     allergens: "",
     servings: 2,
@@ -74,6 +78,29 @@ test("guardrail rejection backfills 琵琶腿 results from a larger candidate po
 test("ingredient mode returns no grounded match instead of scoring unrelated recipes", () => {
   const result = searchLocalRecipes(input({ ingredients: "火星岩石", maxMinutes: 30 }));
   assert.deepEqual(result.recipes, []);
+});
+
+test("ingredient matching does not confuse 胡萝卜 with plain 萝卜", () => {
+  assert.equal(ingredientMatchQuality("胡萝卜", "萝卜"), 0);
+  assert.ok(ingredientMatchQuality("胡萝卜", "胡萝卜（切丁）") > 0);
+});
+
+test("inventory composer uses every fridge ingredient without new groceries", () => {
+  const query = input({
+    ingredients: "鸡胸肉、西兰花、胡萝卜、米饭",
+    taste: "少油、咸鲜、不辣",
+    allergens: "花生",
+    maxMinutes: 30,
+  });
+  const references = searchLocalRecipes(query, { limit: 8, diversify: false }).recipes;
+  const recipes = composeInventoryRecipes(query, references, 2);
+  assert.equal(recipes.length, 2);
+  for (const recipe of recipes) {
+    assert.deepEqual(recipe.inventoryCoverage?.unused, []);
+    assert.deepEqual(recipe.inventoryCoverage?.missing, []);
+    assert.equal(recipe.inventoryCoverage?.ratio, 1);
+    assert.equal(hasHardFailure(runGuardrails(recipe, query.allergens, query.maxMinutes, false, query)), false);
+  }
 });
 
 test("test corpus covers required real-world techniques", () => {
