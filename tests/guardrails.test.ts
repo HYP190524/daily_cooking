@@ -1,51 +1,82 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkAllergens, validateCookingTime } from "../lib/guardrails";
-import { createMockPlan, createMockReplan } from "../lib/mock-engine";
-import type { PlanInput } from "../lib/types";
+import {
+  checkAllergens,
+  checkNoPurchase,
+  checkSourceGrounding,
+  checkTimeBudget,
+  hasHardFailure,
+  runPlanGuardrails,
+} from "../lib/guardrails";
+import { buildDishPlans, buildIngredientPlans } from "../lib/meal-planner";
+import { rankPantryRecipes } from "../lib/pantry-ranker";
+import { getTrustedRecipes, searchDishRecipes } from "../lib/recipe-repository";
+import type { PlanInput, PlanOption } from "../lib/types";
 
 const input: PlanInput = {
   mode: "ingredients",
   dishName: "",
-  ingredients: "鸡胸肉、西兰花、胡萝卜、米饭",
+  ingredients: "鸡腿、土豆、青菜、米饭",
+  priorityIngredients: "鸡腿、青菜",
+  pantry: "食用油、盐、水、生抽、老抽、料酒、白糖、醋、葱、姜、蒜、淀粉、蚝油",
   planScope: "meal",
-  pantry: "食用油、盐、水、生抽",
-  zeroPurchase: true,
-  taste: "少油、不辣",
+  taste: "家常、不辣",
   allergens: "花生",
   servings: 2,
-  maxMinutes: 30,
+  maxMinutes: 60,
 };
 
-test("local planner returns grounded recipes", () => {
-  const recipes = createMockPlan(input);
-  assert.equal(recipes.length, 2);
-  for (const recipe of recipes) {
-    assert.ok(recipe.steps.length >= 3);
-    assert.ok(recipe.source);
-  }
+function trustedPlan() {
+  const plan = buildIngredientPlans(rankPantryRecipes(getTrustedRecipes(input), input), input, 1)[0];
+  assert.ok(plan);
+  return plan;
+}
+
+test("trusted meal passes all hard guardrails", () => {
+  const checks = runPlanGuardrails(trustedPlan(), input);
+  assert.equal(hasHardFailure(checks), false);
+  assert.equal(checks.find((check) => check.tool === "check_no_purchase")?.passed, true);
+  assert.equal(checks.find((check) => check.tool === "check_source_grounding")?.passed, true);
 });
 
-test("allergen guardrail fails closed when a declared allergen appears", () => {
-  const [recipe] = createMockPlan(input);
-  const riskyRecipe = { ...recipe, ingredients: [...recipe.ingredients, "花生酱"] };
-  const result = checkAllergens(riskyRecipe, "花生");
-  assert.equal(result.passed, false);
-  assert.match(result.detail, /潜在风险/);
+test("allergen guardrail fails closed", () => {
+  const plan = trustedPlan();
+  const risky: PlanOption = {
+    ...plan,
+    recipes: [{ ...plan.recipes[0], ingredients: [...plan.recipes[0].ingredients, "花生酱"] }, ...plan.recipes.slice(1)],
+  };
+  const check = checkAllergens(risky, "花生");
+  assert.equal(check.passed, false);
+  assert.equal(check.severity, "hard");
 });
 
-test("replan keeps completed steps and substitutes future egg references from inventory", () => {
-  const [recipe] = createMockPlan({ ...input, ingredients: "鸡蛋、西红柿、青菜" });
-  const replanned = createMockReplan({
-    recipe,
-    issue: "没有鸡蛋了",
-    allergens: "",
-    maxMinutes: 30,
-    currentStep: 1,
-  });
-  assert.deepEqual(replanned.steps[0], recipe.steps[0]);
-  assert.equal(replanned.tags.includes("已重规划"), true);
-  assert.equal(replanned.steps.slice(1).some((step) => /鸡蛋|蛋液|蛋黄|蛋白/.test(step.instruction + step.title)), false);
-  assert.equal(replanned.steps.slice(1).some((step) => /西红柿|青菜/.test(step.instruction + step.title)), true);
-  assert.equal(replanned.ingredients.some((item) => /嫩豆腐/.test(item)), false);
+test("time overrun is honest soft warning, not a fake fast recipe", () => {
+  const plan = { ...trustedPlan(), totalMinutes: 95 };
+  const check = checkTimeBudget(plan, 30);
+  assert.equal(check.passed, false);
+  assert.equal(check.severity, "soft");
+  assert.match(check.detail, /真实做法/);
+});
+
+test("dish lookup preserves original recipe without inventory closure", () => {
+  const dishInput = { ...input, mode: "dish" as const, dishName: "佛跳墙", ingredients: "", maxMinutes: 30 };
+  const plan = buildDishPlans(searchDishRecipes(dishInput, 1), dishInput)[0];
+  const checks = runPlanGuardrails(plan, dishInput);
+  assert.equal(hasHardFailure(checks), false);
+  assert.equal(checks.find((check) => check.tool === "check_no_purchase")?.passed, true);
+  assert.equal(checks.find((check) => check.tool === "check_time_budget")?.severity, "soft");
+});
+
+test("missing groceries and ungrounded sources are hard failures", () => {
+  const plan = trustedPlan();
+  const missing = { ...plan, coverage: { ...plan.coverage, missing: ["牛奶"] } };
+  assert.equal(checkNoPurchase(missing, input).passed, false);
+  const ungrounded: PlanOption = {
+    ...plan,
+    recipes: [{
+      ...plan.recipes[0],
+      source: { ...plan.recipes[0].source, kind: "generated" as never },
+    }],
+  };
+  assert.equal(checkSourceGrounding(ungrounded).passed, false);
 });

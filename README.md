@@ -1,52 +1,52 @@
-# 开饭 · Harness Demo Lite
+# 开饭啦 · Harness Demo Lite
 
-一个用于 AI 产品经理作品集的轻量 Web Demo：它不追求功能数量，而是用一条完整的烹饪任务链路展示 Agent harness 的关键能力。
+一个面向 AI 产品经理作品集的 Web Demo：输入冰箱现有食材，系统只从可信完整菜谱中检索可做菜品，在“零新增食材”约束下组合成一顿正常的饭。
 
-## Demo 能展示什么
+## 这版解决了什么
 
-1. 用户可选择“按菜名查做法”或“按食材找灵感”。
-2. `recipe-router` 识别意图，`recipe-grounder` 检索 302 道 HowToCook 索引与 20 道手工金标菜。
-3. `inventory-composer` 把真实菜谱作为技法锚点，在零采购约束下适配用户库存。
-4. 食材模式支持“做成一道菜 / 搭配一餐”，并显示库存覆盖率、新增采购和基础调料。
-5. `complex-dish-planner` 区分主动时间、总历时和提前准备，不把复杂菜伪造成快手菜。
-6. `recipe-critic` 与确定性工具检查时间、复杂度、过敏原和库存闭包。
-6. Agent 在执行前暂停，等待用户批准。
-7. 用户进入分步烹饪模式，进度自动保存；遇到缺料时只重规划未完成步骤。
-8. Trace 面板展示 Skill、检索、guardrail、审批和状态事件。
+- 不再使用“杂蔬快炒 / 一锅焖”生成模板拼菜。
+- 不要求一顿消耗全部库存；用户可单独标记“优先消耗”。
+- 缺少必需食材的菜谱不会进入可执行候选。
+- 一餐由 1–2 道独立真实菜谱组成，保留原菜名、配方、步骤和来源。
+- 时间超限只做诚实提示，不会把复杂菜改写成虚假快手版。
+- 做饭步骤一次全部展开，不需要逐条打卡；最后统一点击一次“确认这顿饭完成”。
+
+## Harness 架构
 
 ```mermaid
 flowchart LR
-  UI[Web 工作台] --> API[Next.js Server API]
-  API --> Router[recipe-router]
-  Router --> Grounder[recipe-grounder]
-  Grounder --> Index[HowToCook 本地索引]
-  Grounder --> Gold[20 道手工金标菜]
-  Grounder --> Inventory[inventory-composer]
-  Inventory --> Complex[complex-dish-planner]
-  Complex --> Critic[recipe-critic]
-  Critic --> Time[时间与复杂度校验]
-  Critic --> Allergy[过敏原硬拦截]
-  Grounder -. 未命中 .-> Model[可选 OpenAI 兜底]
-  Critic --> Approval{用户批准?}
-  Approval -->|是| Cook[烹饪执行]
-  Cook --> Checkpoint[Checkpoint]
-  Checkpoint --> Replan[局部重规划]
+  UI[Next.js Web 工作台] --> API[POST /api/plan]
+  API --> Normalize[ingredient-normalizer]
+  Normalize --> Retrieve[trusted-recipe-retriever]
+  Retrieve --> Gold[23 道手工校验菜]
+  Retrieve --> HTC[302 道 HowToCook 索引]
+  Retrieve --> Rank[pantry-ranker]
+  Rank --> Meal[meal-set-planner]
+  Meal --> Guard{确定性 Guardrails}
+  Guard -->|通过| Approval[Human-in-the-loop]
+  Guard -->|缺料/过敏/无来源| Stop[Fail closed]
+  Approval --> Cook[一次展开全部步骤]
+  Cook --> Done[统一确认完成]
 ```
+
+四个项目级 Skill 位于 `.cursor/skills/`：
+
+1. `ingredient-normalizer`：中文食材别名、数量和可选项归一化。
+2. `trusted-recipe-retriever`：只召回 HowToCook 与手工金标完整菜谱。
+3. `pantry-ranker`：按库存、优先食材、基础调料、时间和口味排序。
+4. `meal-set-planner`：把 1–2 道独立菜谱组合成合理一餐。
+
+随后由确定性 Guardrail 复核来源、过敏原、零采购、时间、优先食材覆盖和一餐结构。没有大模型自由生成兜底，因此演示无需 API Key，也不会因模型波动造出不真实的菜。
 
 ## 技术栈
 
-- Next.js 16 + React 19
-- TypeScript
-- 原生 CSS（无 Tailwind 配置负担）
-- Lucide 图标
-- GSAP + `@gsap/react` 微动效，并兼容 `prefers-reduced-motion`
-- 项目内原创 AI 美食主图与透明贴纸插画
-- localStorage checkpoint
+- Next.js 16 + React 19 + TypeScript
 - Next.js Route Handlers
-- HowToCook 静态本地索引（Unlicense），部署后无需第三方菜谱 API
-- 20 道手工校验高价值菜，覆盖炒、蒸、煮、炖、煨、炸、烤、凉拌等技法
-- 5 个项目级烹饪 Skill，位于 `.cursor/skills/`
-- 可选 OpenAI Responses API；默认 Local RAG，未命中时才使用模型兜底
+- 原生 CSS + GSAP 微动效
+- localStorage 运行状态恢复
+- 302 道 HowToCook 静态索引（Unlicense）
+- 23 道手工校验高价值菜谱
+- Node Test Runner + `tsx`
 
 ## 本地运行
 
@@ -55,49 +55,9 @@ npm install
 npm run dev
 ```
 
-打开 [http://localhost:3000](http://localhost:3000)。
+打开 [http://localhost:3000](http://localhost:3000)。无需环境变量或第三方 API。
 
-项目默认使用本地菜谱索引，所以无需任何密钥或联网请求即可完整演示。
-
-视觉方向借鉴高饱和餐饮杂志与拼贴网页的设计语言，但不复用参考站的品牌、商标或图片。页面使用的素材保存在 `public/assets/`。
-
-## 启用真实模型
-
-复制环境变量示例：
-
-```bash
-cp .env.example .env.local
-```
-
-配置：
-
-```bash
-OPENAI_API_KEY=your_server_side_key
-OPENAI_MODEL=gpt-5.6-luna
-```
-
-密钥只会在服务端 Route Handler 中读取，不会进入浏览器 bundle。调用使用 Responses API 的 JSON Schema Structured Outputs；具体字段可参考[官方 OpenAI 文档](https://developers.openai.com/api/reference/typescript/resources/beta/subresources/responses/methods/create)。
-
-如果真实模型请求失败，Demo 会显示降级提示并切换到本地引擎，保证面试演示不中断。
-
-## 部署到 Vercel
-
-### 方式一：GitHub 导入
-
-1. 把项目推送到 GitHub。
-2. 在 Vercel 选择 `Add New Project`，导入仓库。
-3. Framework Preset 会自动识别为 Next.js。
-4. 不配置环境变量也能部署完整的 Local RAG Demo。
-5. 如需真实模型，在 Vercel Project Settings → Environment Variables 添加 `OPENAI_API_KEY` 和 `OPENAI_MODEL`。
-6. 点击 Deploy。
-
-### 方式二：Vercel CLI
-
-```bash
-npx vercel
-```
-
-## 验证命令
+## 验证
 
 ```bash
 npm run typecheck
@@ -105,32 +65,35 @@ npm test
 npm run build
 ```
 
-## 作品集演示脚本
+## 部署到 Vercel
 
-建议在面试时按这个顺序操作：
+1. 在 Vercel 选择 **Add New Project**。
+2. 导入 GitHub 仓库 `HYP190524/harness-demo-lite`。
+3. 保持自动识别的 Next.js 配置，无需添加环境变量。
+4. 点击 **Deploy**。
 
-1. 切换“按菜名查做法”，输入“丝瓜鸡蛋汤”，展示它返回真实的煮汤流程而不是快炒/一锅焖模板。
-2. 输入“佛跳墙”，时间保持 30 分钟，展示传统版与家庭版的跨日准备警告。
-3. 指出右侧 Trace 中四个 Skill、索引检索和确定性 Guardrail 的分工。
-4. 切换“按食材找灵感”，展示候选技法不同而不是同质化生成。
-5. 在审批点解释为什么 Agent 不应该未经确认直接执行。
-6. 选择一套方案进入烹饪；完成第一步后用缺料问题触发 checkpoint 局部重规划。
-7. 刷新页面，说明运行状态可以恢复。
+## 推荐演示脚本
 
-## 本地数据与测试集
+1. 在“按食材找灵感”输入 `鸡腿、土豆、青菜、米饭`，优先消耗填写 `鸡腿、青菜`。
+2. 展示候选为 `土豆烧鸡腿 + 清炒青菜` 等独立真实菜品，而不是把四种食材混成怪菜。
+3. 指出卡片会明确显示本次使用、留到下一顿、基础调料和新增采购 0。
+4. 查看右侧 Trace，解释归一化、检索、排序、一餐组合、Guardrail 和人工审批的职责边界。
+5. 确认方案后展示全部做法；最后只点击一次“确认这顿饭完成”。
+6. 切到“按菜名查做法”输入 `佛跳墙`，展示真实跨日耗时，而非虚假 30 分钟版本。
 
-- `data/howtocook-index.json`：由官方 [HowToCook](https://github.com/Anduin2017/HowToCook) 生成的静态索引，来源说明见 `data/HOWTOCOOK-NOTICE.md`。
-- `data/gold-recipes.ts`：20 道人工补齐菜谱，包含真实技法、火候提示、主动/总时长与提前准备。
+## 数据说明
+
+- `data/howtocook-index.json`：从 [HowToCook](https://github.com/Anduin2017/HowToCook) 构建的本地索引，来源说明见 `data/HOWTOCOOK-NOTICE.md`。
+- `data/gold-recipes.ts`：23 道人工补齐菜谱，覆盖炒、蒸、煮、炖、煨、炸、烤、凉拌等技法。
 - `scripts/build-howtocook-index.mjs`：重新生成索引的脚本。
-- `tests/recipe-engine.test.ts`：验证菜名路由、复杂菜 Guardrail、候选技法差异和八类关键技法覆盖。
+- `tests/`：验证食材别名、可信召回、零采购闭包、一餐组合与六类 Guardrail。
 
-## 当前刻意不做的功能
+## Demo 刻意不做
 
 - 登录与多用户数据库
 - 图片识别
 - 多 Agent
-- MCP 与外部购物接口
+- 购物接口与自动下单
 - 营养医学建议
-- 支付、会员或运营系统
 
-这些能力适合放在 Roadmap，而不是最小求职 Demo 中。
+这些能力放在 Roadmap，不进入求职 Demo 的最小可信闭环。

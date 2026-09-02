@@ -1,30 +1,31 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { goldRecipes } from "../data/gold-recipes";
-import { checkRecipeComplexity, hasHardFailure, runGuardrails } from "../lib/guardrails";
-import { composeInventoryRecipes } from "../lib/inventory-composer";
-import { getTechniqueCoverage, ingredientMatchQuality, pickDiverseRecipes, searchLocalRecipes } from "../lib/recipe-index";
+import { ingredientMatches, normalizeIngredient } from "../lib/ingredient-normalizer";
+import { buildIngredientPlans } from "../lib/meal-planner";
+import { rankPantryRecipes } from "../lib/pantry-ranker";
+import { getTechniqueCoverage, getTrustedRecipes, searchDishRecipes } from "../lib/recipe-repository";
 import type { PlanInput } from "../lib/types";
 
-function input(overrides: Partial<PlanInput>): PlanInput {
+function input(overrides: Partial<PlanInput> = {}): PlanInput {
   return {
     mode: "ingredients",
     dishName: "",
-    ingredients: "丝瓜、鸡蛋",
+    ingredients: "鸡腿、土豆、青菜、米饭",
+    priorityIngredients: "鸡腿、青菜",
+    pantry: "食用油、盐、水、生抽、老抽、料酒、白糖、醋、葱、姜、蒜、淀粉、蚝油",
     planScope: "meal",
-    pantry: "食用油、盐、水、生抽",
-    zeroPurchase: true,
-    taste: "家常",
-    allergens: "",
+    taste: "家常、不辣",
+    allergens: "花生",
     servings: 2,
-    maxMinutes: 30,
+    maxMinutes: 60,
     ...overrides,
   };
 }
 
-test("gold set contains exactly 20 manually checked recipes", () => {
-  assert.equal(goldRecipes.length, 20);
-  assert.equal(new Set(goldRecipes.map((recipe) => recipe.name)).size, 20);
+test("gold set contains 23 manually checked complete recipes", () => {
+  assert.equal(goldRecipes.length, 23);
+  assert.equal(new Set(goldRecipes.map((recipe) => recipe.name)).size, 23);
   for (const recipe of goldRecipes) {
     assert.ok(recipe.steps.length >= 4, recipe.name);
     assert.ok(recipe.ingredients.length >= 5, recipe.name);
@@ -32,78 +33,54 @@ test("gold set contains exactly 20 manually checked recipes", () => {
   }
 });
 
-test("dish mode resolves 丝瓜鸡蛋汤 instead of generic stir-fry or braise", () => {
-  const result = searchLocalRecipes(input({ mode: "dish", dishName: "丝瓜鸡蛋汤怎么做", ingredients: "" }));
-  assert.equal(result.recipes[0]?.name, "丝瓜鸡蛋汤");
-  assert.equal(result.recipes[0]?.technique, "煮");
-  assert.doesNotMatch(result.recipes[0]?.name ?? "", /快炒|一锅焖/);
-  assert.equal(result.exactGoldMatch, true);
+test("normalizer expands true aliases but keeps carrot and white radish distinct", () => {
+  assert.equal(normalizeIngredient("琵琶腿 2只"), "鸡腿");
+  assert.equal(ingredientMatches("胡萝卜", "白萝卜"), false);
+  assert.equal(ingredientMatches("鸡肉", "鸡腿"), true);
 });
 
-test("complex dish keeps authentic elapsed time and uses soft time warning", () => {
-  const query = input({ mode: "dish", dishName: "佛跳墙", ingredients: "", maxMinutes: 30 });
-  const result = searchLocalRecipes(query);
-  assert.equal(result.recipes.length, 2);
-  assert.ok(result.recipes.every((recipe) => recipe.totalMinutes > query.maxMinutes));
-  assert.ok(result.recipes.every((recipe) => (recipe.advancePrepMinutes ?? 0) > 0));
-  const checks = runGuardrails(result.recipes[0], "", query.maxMinutes, true);
-  assert.equal(hasHardFailure(checks), false);
-  assert.equal(checks.find((check) => check.tool === "validate_cooking_time")?.severity, "soft");
-  assert.equal(checkRecipeComplexity(result.recipes[0]).passed, false);
+test("dish lookup resolves real soup and complex recipes", () => {
+  const soup = searchDishRecipes(input({ mode: "dish", dishName: "丝瓜鸡蛋汤怎么做", ingredients: "" }));
+  assert.equal(soup[0]?.name, "丝瓜鸡蛋汤");
+  assert.equal(soup[0]?.technique, "煮");
+  const complex = searchDishRecipes(input({ mode: "dish", dishName: "佛跳墙", ingredients: "", maxMinutes: 30 }));
+  assert.equal(complex.length, 2);
+  assert.ok(complex.every((recipe) => recipe.totalMinutes > 30));
 });
 
-test("ingredient mode selects different techniques when alternatives exist", () => {
-  const result = searchLocalRecipes(input({ ingredients: "鸡蛋、西红柿、黄瓜", maxMinutes: 45 }));
-  assert.equal(result.recipes.length, 2);
-  assert.notEqual(result.recipes[0].technique, result.recipes[1].technique);
-});
-
-test("ingredient mode expands 琵琶腿 aliases and never returns unrelated gold recipes", () => {
-  const result = searchLocalRecipes(input({ ingredients: "琵琶腿", taste: "不辣", allergens: "花生", maxMinutes: 30 }));
-  assert.ok(result.recipes.length > 0);
-  assert.ok(result.recipes.every((recipe) => recipe.ingredients.some((ingredient) => /鸡腿|鸡肉|手枪腿/.test(ingredient))));
-  assert.equal(result.recipes.some((recipe) => /丝瓜鸡蛋汤|西红柿炒鸡蛋/.test(recipe.name)), false);
-});
-
-test("guardrail rejection backfills 琵琶腿 results from a larger candidate pool", () => {
-  const query = input({ ingredients: "琵琶腿", taste: "少油、咸鲜、不辣", allergens: "花生", maxMinutes: 60 });
-  const pool = searchLocalRecipes(query, { limit: 8, diversify: false }).recipes;
-  const accepted = pool.filter((recipe) => !hasHardFailure(runGuardrails(recipe, query.allergens, query.maxMinutes)));
-  const displayed = pickDiverseRecipes(accepted, 2);
-  assert.equal(displayed.length, 2);
-  assert.notEqual(displayed[0].technique, displayed[1].technique);
-  assert.ok(displayed.every((recipe) => recipe.ingredients.some((ingredient) => /鸡腿|鸡肉|手枪腿/.test(ingredient))));
-});
-
-test("ingredient mode returns no grounded match instead of scoring unrelated recipes", () => {
-  const result = searchLocalRecipes(input({ ingredients: "火星岩石", maxMinutes: 30 }));
-  assert.deepEqual(result.recipes, []);
-});
-
-test("ingredient matching does not confuse 胡萝卜 with plain 萝卜", () => {
-  assert.equal(ingredientMatchQuality("胡萝卜", "萝卜"), 0);
-  assert.ok(ingredientMatchQuality("胡萝卜", "胡萝卜（切丁）") > 0);
-});
-
-test("inventory composer uses every fridge ingredient without new groceries", () => {
-  const query = input({
-    ingredients: "鸡胸肉、西兰花、胡萝卜、米饭",
-    taste: "少油、咸鲜、不辣",
-    allergens: "花生",
-    maxMinutes: 30,
-  });
-  const references = searchLocalRecipes(query, { limit: 8, diversify: false }).recipes;
-  const recipes = composeInventoryRecipes(query, references, 2);
-  assert.equal(recipes.length, 2);
-  for (const recipe of recipes) {
-    assert.deepEqual(recipe.inventoryCoverage?.unused, []);
-    assert.deepEqual(recipe.inventoryCoverage?.missing, []);
-    assert.equal(recipe.inventoryCoverage?.ratio, 1);
-    assert.equal(hasHardFailure(runGuardrails(recipe, query.allergens, query.maxMinutes, false, query)), false);
+test("pantry ranking returns only trusted zero-purchase recipes", () => {
+  const query = input();
+  const matches = rankPantryRecipes(getTrustedRecipes(query), query);
+  const cookable = matches.filter((match) => match.cookable);
+  assert.ok(cookable.some((match) => match.recipe.name === "土豆烧鸡腿"));
+  assert.ok(cookable.some((match) => match.recipe.name === "清炒青菜"));
+  for (const match of cookable) {
+    assert.deepEqual(match.missing, []);
+    assert.ok(["gold", "howtocook"].includes(match.recipe.source.kind));
+    assert.doesNotMatch(match.recipe.name, /杂蔬快炒|杂蔬焖炒|一锅焖/);
   }
 });
 
-test("test corpus covers required real-world techniques", () => {
+test("meal planner creates realistic separate dishes and allows unused inventory", () => {
+  const query = input();
+  const plans = buildIngredientPlans(rankPantryRecipes(getTrustedRecipes(query), query), query, 2);
+  assert.ok(plans.length > 0);
+  assert.ok(plans.some((plan) => plan.title.includes("土豆烧鸡腿") && plan.title.includes("清炒青菜")));
+  for (const plan of plans) {
+    assert.deepEqual(plan.coverage.missing, []);
+    assert.ok(plan.recipes.length <= 2);
+    assert.ok(plan.recipes.every((recipe) => ["gold", "howtocook"].includes(recipe.source.kind)));
+  }
+  assert.ok(plans.some((plan) => plan.coverage.unused.includes("米饭")));
+});
+
+test("unknown inventory returns no false grounded match", () => {
+  const query = input({ ingredients: "火星岩石", priorityIngredients: "", pantry: "盐、水" });
+  const matches = rankPantryRecipes(getTrustedRecipes(query), query);
+  assert.equal(matches.length, 0);
+});
+
+test("trusted corpus covers core real-world techniques", () => {
   const coverage = getTechniqueCoverage();
   for (const technique of ["炒", "蒸", "煮", "炖", "煨", "炸", "烤", "凉拌"]) {
     assert.ok((coverage[technique] ?? 0) > 0, `missing ${technique}`);

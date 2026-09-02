@@ -66,18 +66,6 @@ button:disabled {
   outline-offset: 2px;
 }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
 .boot-screen {
   min-height: 100vh;
   display: flex;
@@ -111,7 +99,6 @@ button:disabled {
 .rationale,
 .approval-pill,
 .state-chip,
-.replan-heading > div,
 .trace-toolbar > span,
 .trace-footer,
 .notice,
@@ -172,14 +159,6 @@ button:disabled {
   height: 7px;
   background: var(--color-accent);
   border-radius: 50%;
-}
-
-.mode-mock .status-dot {
-  background: var(--color-warning);
-}
-
-.mode-mock-fallback .status-dot {
-  background: var(--color-destructive);
 }
 
 .button {
@@ -433,8 +412,7 @@ button:disabled {
 
 .field input,
 .field textarea,
-.field select,
-.replan-input-row input {
+.field select {
   width: 100%;
   min-height: 44px;
   color: var(--color-foreground);
@@ -445,8 +423,7 @@ button:disabled {
 }
 
 .field input,
-.field select,
-.replan-input-row input {
+.field select {
   padding: 0 12px;
 }
 
@@ -457,15 +434,13 @@ button:disabled {
 
 .field input:hover:not(:disabled),
 .field textarea:hover:not(:disabled),
-.field select:hover:not(:disabled),
-.replan-input-row input:hover:not(:disabled) {
+.field select:hover:not(:disabled) {
   border-color: #c5aa98;
 }
 
 .field input:focus,
 .field textarea:focus,
-.field select:focus,
-.replan-input-row input:focus {
+.field select:focus {
   border-color: var(--color-primary);
   outline: 3px solid color-mix(in srgb, var(--color-primary), transparent 84%);
 }
@@ -717,9 +692,6 @@ button:disabled {
 .step-title-row,
 .runtime-state-top,
 .trace-meta,
-.cooking-controls,
-.progress-meta,
-.replan-heading,
 .approval-bar,
 .cooking-header {
   display: flex;
@@ -848,54 +820,6 @@ button:disabled {
   font-size: 13px;
 }
 
-.progress-ring {
-  --progress: 0deg;
-  width: 70px;
-  height: 70px;
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background:
-    radial-gradient(circle at center, var(--color-canvas) 55%, transparent 57%),
-    conic-gradient(var(--color-accent) var(--progress), var(--color-border) var(--progress));
-  border-radius: 50%;
-}
-
-.progress-ring strong {
-  font-family: var(--font-mono);
-  font-size: 14px;
-}
-
-.progress-ring span {
-  color: var(--color-muted-foreground);
-  font-size: 9px;
-}
-
-.progress-track {
-  height: 5px;
-  margin-top: 18px;
-  overflow: hidden;
-  background: var(--color-border);
-  border-radius: 999px;
-}
-
-.progress-track span {
-  height: 100%;
-  display: block;
-  background: var(--color-accent);
-  border-radius: inherit;
-  transition: width 300ms ease;
-}
-
-.progress-meta {
-  margin-top: 7px;
-  color: var(--color-muted-foreground);
-  font-family: var(--font-mono);
-  font-size: 10px;
-}
-
 .step-list {
   margin-top: 20px;
   display: grid;
@@ -907,23 +831,11 @@ button:disabled {
   grid-template-columns: auto 1fr;
   gap: 12px;
   padding: 13px;
-  opacity: 0.62;
+  opacity: 1;
   background: color-mix(in srgb, var(--color-surface), transparent 24%);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   transition: opacity 180ms ease, border-color 180ms ease, background-color 180ms ease;
-}
-
-.cooking-step.active {
-  opacity: 1;
-  background: var(--color-surface);
-  border-color: var(--color-primary);
-}
-
-.cooking-step.done {
-  opacity: 0.75;
-  background: var(--color-accent-soft);
-  border-color: #cae9d8;
 }
 
 .step-number {
@@ -937,16 +849,6 @@ button:disabled {
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 700;
-}
-
-.active .step-number {
-  color: #fff;
-  background: var(--color-primary);
-}
-
-.done .step-number {
-  color: #fff;
-  background: var(--color-accent);
 }
 
 .step-title-row h4 {
@@ -967,40 +869,6 @@ button:disabled {
   margin: 5px 0 0;
   color: var(--color-muted-foreground);
   font-size: 12px;
-}
-
-.cooking-controls {
-  margin-top: 16px;
-  justify-content: flex-end;
-}
-
-.replan-box {
-  margin-top: 20px;
-  padding: 14px;
-  background: var(--color-muted);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-}
-
-.replan-heading {
-  align-items: flex-start;
-}
-
-.replan-heading > div {
-  gap: 7px;
-  font-size: 12px;
-}
-
-.replan-heading > span {
-  color: var(--color-muted-foreground);
-  font-size: 10px;
-}
-
-.replan-input-row {
-  margin-top: 11px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
 }
 
 .completion-card {
@@ -1476,44 +1344,13 @@ button:disabled {
     align-self: flex-start;
   }
 
-  .progress-ring {
-    align-self: flex-start;
-  }
-
   .approval-bar .button,
   .completion-card .button {
     width: 100%;
   }
 
-  .replan-input-row {
-    grid-template-columns: 1fr;
-  }
-
-  .replan-input-row .button {
-    width: 100%;
-  }
-
-  .replan-heading {
-    display: block;
-  }
-
-  .replan-heading > span {
-    display: block;
-    margin-top: 4px;
-  }
-
   .completion-card {
     display: flex;
-  }
-
-  .cooking-controls {
-    display: grid;
-    grid-template-columns: 1fr 1.35fr;
-  }
-
-  .cooking-controls .button {
-    padding: 0 10px;
-    font-size: 13px;
   }
 }
 
@@ -1864,8 +1701,6 @@ select {
 
 .sticker-broccoli { background-position: 0 0; }
 .sticker-carrot { background-position: 50% 0; }
-.sticker-mushroom { background-position: 100% 0; }
-.sticker-rice { background-position: 0 100%; }
 .sticker-pan { background-position: 50% 100%; }
 .sticker-robot { background-position: 100% 100%; }
 
@@ -2086,8 +1921,7 @@ select {
 
 .field input,
 .field textarea,
-.field select,
-.replan-input-row input {
+.field select {
   min-height: 48px;
   color: var(--color-foreground);
   background: #fffdf5;
@@ -2302,61 +2136,18 @@ select {
   color: #5d4500;
 }
 
-.progress-ring {
-  width: 80px;
-  height: 80px;
-  background:
-    radial-gradient(circle at center, #fff8ec 53%, transparent 55%),
-    conic-gradient(#1749df var(--progress), #e0cfbb var(--progress));
-  border: 2px solid var(--color-foreground);
-  box-shadow: 4px 4px 0 var(--color-foreground);
-}
-
-.progress-track {
-  height: 10px;
-  background: #e0cfbb;
-  border: 2px solid var(--color-foreground);
-}
-
-.progress-track span {
-  background: var(--color-primary);
-}
-
 .cooking-step {
   padding: 15px;
-  opacity: 0.58;
+  opacity: 1;
   background: #fff;
   border: 2px solid var(--color-foreground);
   border-radius: 16px;
-}
-
-.cooking-step.active {
-  opacity: 1;
-  background: #ffdf54;
-  border-color: var(--color-foreground);
-  box-shadow: 4px 4px 0 var(--color-foreground);
-}
-
-.cooking-step.done {
-  opacity: 0.78;
-  background: #d8f3a0;
-  border-color: var(--color-foreground);
 }
 
 .step-number {
   color: var(--color-foreground);
   background: #eee0ce;
   border: 2px solid var(--color-foreground);
-}
-
-.active .step-number { background: var(--color-primary); }
-.done .step-number { background: #168a54; }
-
-.replan-box {
-  background: #ffd8cf;
-  border: 2px solid var(--color-foreground);
-  border-radius: 18px;
-  box-shadow: 4px 4px 0 var(--color-foreground);
 }
 
 .completion-card {
@@ -2773,8 +2564,6 @@ select {
     flex-direction: column;
   }
 
-  .replan-input-row { grid-template-columns: 1fr; }
-
   .playful-footer h2 {
     font-size: clamp(48px, 16vw, 76px);
   }
@@ -2858,16 +2647,6 @@ select {
 }
 
 .feasibility-warning svg { flex: 0 0 auto; margin-top: 1px; }
-
-.recipe-facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  margin-top: 10px;
-  font-size: 11px;
-  font-weight: 900;
-  text-align: left;
-}
 
 .source-note {
   margin-top: 10px;
@@ -2993,10 +2772,138 @@ select {
 }
 
 .inventory-proof-ok { color: #24643c; }
-.inventory-proof-bad { color: #a32016; }
 
 @media (max-width: 420px) {
   .scope-switch { grid-template-columns: 1fr; }
   .inventory-proof { grid-template-columns: 1fr; }
   .inventory-proof small { grid-column: auto; }
+}
+
+/* Trusted pantry planner: meal evidence and single completion */
+.priority-field {
+  padding: 12px;
+  background: #fff3b7;
+  border: 1px dashed var(--color-foreground);
+  border-radius: 12px;
+}
+
+.plan-recipe-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 7px;
+  text-align: left;
+}
+
+.plan-recipe-list div {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgb(255 255 255 / 58%);
+  border: 1px solid rgb(23 18 15 / 46%);
+  border-radius: 10px;
+}
+
+.plan-recipe-list strong { font-size: 12px; }
+.plan-recipe-list span { color: #62584f; font-size: 9px; font-weight: 850; }
+
+.unused-note {
+  margin-top: 8px;
+  padding: 8px 10px;
+  color: #655a50;
+  background: rgb(255 255 255 / 48%);
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.all-steps-note {
+  min-height: 48px;
+  margin: 18px 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 13px;
+  color: #244918;
+  background: #d8f3a0;
+  border: 2px solid var(--color-foreground);
+  border-radius: 13px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.meal-step-list {
+  display: grid;
+  gap: 28px;
+}
+
+.cooking-recipe-group {
+  padding: 16px;
+  background: #fffaf0;
+  border: 2px solid var(--color-foreground);
+  border-radius: 18px;
+  box-shadow: 5px 5px 0 var(--color-foreground);
+}
+
+.cooking-recipe-heading {
+  margin-bottom: 14px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cooking-recipe-heading span {
+  color: #ff3b30;
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.cooking-recipe-heading h4 {
+  margin: 3px 0 0;
+  font-size: clamp(22px, 2.7vw, 34px);
+  letter-spacing: -0.045em;
+}
+
+.cooking-recipe-heading a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  color: var(--color-foreground);
+  background: #ffe15a;
+  border: 1px solid var(--color-foreground);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.single-completion-control {
+  position: sticky;
+  bottom: 16px;
+  z-index: 5;
+  margin-top: 24px;
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px;
+  background: #ffe15a;
+  border: 2px solid var(--color-foreground);
+  border-radius: 16px;
+  box-shadow: 5px 5px 0 var(--color-foreground);
+}
+
+.single-completion-control .button {
+  min-height: 52px;
+  padding-inline: 22px;
+}
+
+@media (max-width: 720px) {
+  .plan-recipe-list div,
+  .cooking-recipe-heading { align-items: flex-start; flex-direction: column; }
+  .single-completion-control .button { width: 100%; }
 }
