@@ -4,6 +4,7 @@ import {
   ingredientMatches,
   splitIngredientInput,
 } from "./ingredient-normalizer";
+import { DEFAULT_PANTRY, seasoningKind } from "./pantry-presets";
 import type { PlanInput, Recipe } from "./types";
 
 export interface RecipeMatch {
@@ -13,6 +14,8 @@ export interface RecipeMatch {
   availableUsed: string[];
   priorityUsed: string[];
   pantryUsed: string[];
+  specialtySeasonings: string[];
+  blockedSeasonings: string[];
   missing: string[];
   matchPercent: number;
   score: number;
@@ -33,7 +36,7 @@ function preferenceBoost(recipe: Recipe, taste: string) {
 export function rankPantryRecipes(recipes: Recipe[], input: PlanInput) {
   const available = splitIngredientInput(input.ingredients);
   const priority = splitIngredientInput(input.priorityIngredients);
-  const pantry = splitIngredientInput(input.pantry);
+  const unavailableSeasonings = splitIngredientInput(input.unavailableSeasonings);
 
   return recipes
     .map<RecipeMatch>((recipe) => {
@@ -41,12 +44,21 @@ export function rankPantryRecipes(recipes: Recipe[], input: PlanInput) {
       const required = requirements.map((item) => item.name);
       const availableUsed = unique(available.filter((item) => required.some((requirement) => ingredientMatches(requirement, item))));
       const priorityUsed = unique(priority.filter((item) => required.some((requirement) => ingredientMatches(requirement, item))));
-      const pantryUsed = unique(pantry.filter((item) => required.some((requirement) => ingredientMatches(requirement, item))));
-      const missing = unique(required.filter((requirement) =>
-        !findMatchingIngredient(requirement, available) && !findMatchingIngredient(requirement, pantry),
+      const pantryUsed = unique(DEFAULT_PANTRY.filter((item) =>
+        required.some((requirement) => seasoningKind(requirement, unavailableSeasonings) === "default" && ingredientMatches(requirement, item)),
       ));
-      const matched = unique([...availableUsed, ...priorityUsed, ...pantryUsed]);
-      const matchPercent = required.length ? Math.round(((required.length - missing.length) / required.length) * 100) : 0;
+      const specialtySeasonings = unique(required.filter((requirement) =>
+        seasoningKind(requirement, unavailableSeasonings) === "specialty",
+      ));
+      const blockedSeasonings = unique(required.filter((requirement) =>
+        seasoningKind(requirement, unavailableSeasonings) === "blocked",
+      ));
+      const missing = unique(required.filter((requirement) =>
+        !findMatchingIngredient(requirement, available) && seasoningKind(requirement, unavailableSeasonings) === null,
+      ));
+      const matched = unique([...availableUsed, ...priorityUsed, ...pantryUsed, ...specialtySeasonings]);
+      const unresolvedCount = missing.length + blockedSeasonings.length;
+      const matchPercent = required.length ? Math.round(((required.length - unresolvedCount) / required.length) * 100) : 0;
       const timePenalty = Math.max(0, recipe.totalMinutes - input.maxMinutes) * 1.5;
       const sourceBoost = recipe.source.kind === "gold" ? 22 : 8;
       const score =
@@ -56,6 +68,8 @@ export function rankPantryRecipes(recipes: Recipe[], input: PlanInput) {
         sourceBoost +
         preferenceBoost(recipe, input.taste) -
         missing.length * 90 -
+        blockedSeasonings.length * 120 -
+        specialtySeasonings.length * 6 -
         timePenalty;
       return {
         recipe,
@@ -64,10 +78,12 @@ export function rankPantryRecipes(recipes: Recipe[], input: PlanInput) {
         availableUsed,
         priorityUsed,
         pantryUsed,
+        specialtySeasonings,
+        blockedSeasonings,
         missing,
         matchPercent,
         score,
-        cookable: missing.length === 0 && availableUsed.length > 0,
+        cookable: missing.length === 0 && blockedSeasonings.length === 0 && availableUsed.length > 0,
       };
     })
     .filter((match) => match.availableUsed.length > 0 || match.priorityUsed.length > 0)
@@ -79,5 +95,8 @@ export function summarizeNearest(matches: RecipeMatch[], limit = 3) {
     .filter((match) => !match.cookable)
     .sort((left, right) => left.missing.length - right.missing.length || right.score - left.score)
     .slice(0, limit)
-    .map((match) => `${match.recipe.name}（缺 ${match.missing.join("、")}）`);
+    .map((match) => {
+      const missing = [...match.missing, ...match.blockedSeasonings];
+      return `${match.recipe.name}（缺 ${missing.join("、")}）`;
+    });
 }

@@ -21,12 +21,14 @@ function result(
 }
 
 export function checkSourceGrounding(plan: PlanOption) {
-  const ungrounded = plan.recipes.filter((recipe) => !["gold", "howtocook"].includes(recipe.source.kind));
+  const ungrounded = plan.recipes.filter((recipe) => !["gold", "howtocook", "deepseek"].includes(recipe.source.kind));
   return result(
     "check_source_grounding",
     ungrounded.length === 0,
     ungrounded.length
       ? `发现没有可信来源的菜谱：${ungrounded.map((recipe) => recipe.name).join("、")}。`
+      : plan.recipes.every((recipe) => recipe.source.kind === "deepseek")
+      ? `${plan.recipes.length} 道菜均保留 DeepSeek 生成来源，并将接受确定性约束复核。`
       : `${plan.recipes.length} 道菜均来自本地可信菜谱库。`,
     "hard",
   );
@@ -36,7 +38,10 @@ export function checkAllergens(plan: PlanOption, allergens: string) {
   const declared = splitIngredientInput(allergens);
   if (!declared.length) return result("check_allergens", true, "用户未声明过敏原。", "hard");
 
-  const ingredientText = plan.recipes.flatMap((recipe) => recipe.ingredients).join("、");
+  const ingredientText = plan.recipes.flatMap((recipe) => [
+    ...recipe.ingredients,
+    ...recipe.steps.map((step) => step.instruction),
+  ]).join("、");
   const matches = declared.filter((allergen) =>
     (allergenAliases[allergen] ?? [allergen]).some((alias) => ingredientText.includes(alias)),
   );
@@ -54,22 +59,37 @@ export function checkNoPurchase(plan: PlanOption, input: PlanInput) {
   }
   return result(
     "check_no_purchase",
-    plan.coverage.missing.length === 0,
-    plan.coverage.missing.length
-      ? `仍需购买：${plan.coverage.missing.join("、")}。`
-      : "库存闭包通过：只使用现有食材和已声明基础调料，新增采购 0 项。",
+    plan.coverage.missing.length === 0 && plan.coverage.blockedSeasonings.length === 0,
+    plan.coverage.blockedSeasonings.length
+      ? `方案使用了你明确标记为没有的调料：${plan.coverage.blockedSeasonings.join("、")}。`
+      : plan.coverage.missing.length
+      ? `仍缺少主要食材：${plan.coverage.missing.join("、")}。`
+      : "主要食材闭包通过：无需新增购买主要食材。",
     "hard",
   );
 }
 
+export function checkSeasoningAssumptions(plan: PlanOption) {
+  const seasonings = plan.coverage.specialtySeasonings;
+  return result(
+    "check_seasoning_assumptions",
+    seasonings.length === 0,
+    seasonings.length
+      ? `这份菜谱还会用到特殊调料：${seasonings.join("、")}；已向用户明确提示。`
+      : "仅使用默认中式家常基础调料。",
+    "soft",
+  );
+}
+
 export function checkTimeBudget(plan: PlanOption, maxMinutes: number) {
+  const generated = plan.recipes.some((recipe) => recipe.source.kind === "deepseek");
   return result(
     "check_time_budget",
     plan.totalMinutes <= maxMinutes,
     plan.totalMinutes <= maxMinutes
       ? `预计 ${plan.totalMinutes} 分钟，符合 ${maxMinutes} 分钟预算。`
       : `真实做法约需 ${plan.totalMinutes} 分钟，超过 ${maxMinutes} 分钟；保留真实时长并提示。`,
-    "soft",
+    generated ? "hard" : "soft",
   );
 }
 
@@ -87,13 +107,16 @@ export function checkPriorityCoverage(plan: PlanOption, input: PlanInput) {
   );
 }
 
-export function checkMealCoherence(plan: PlanOption) {
+export function checkMealCoherence(plan: PlanOption, input?: PlanInput) {
   const names = plan.recipes.map((recipe) => recipe.name);
-  const coherent = names.length >= 1 && names.length <= 2 && new Set(names).size === names.length;
+  const expectedCount = input
+    ? input.mode === "dish" || input.planScope === "single" ? 1 : input.dishCount
+    : Math.min(2, names.length);
+  const coherent = names.length === expectedCount && new Set(names).size === names.length;
   return result(
     "check_meal_coherence",
     coherent,
-    coherent ? `方案由 ${names.join(" + ")} 组成，菜谱分别执行。` : "一餐组合含重复菜或超过两道菜。",
+    coherent ? `方案由 ${names.join(" + ")} 组成，菜谱分别执行。` : `方案应包含 ${expectedCount} 道互不重复的菜。`,
     "hard",
   );
 }
@@ -103,9 +126,10 @@ export function runPlanGuardrails(plan: PlanOption, input: PlanInput) {
     checkSourceGrounding(plan),
     checkAllergens(plan, input.allergens),
     checkNoPurchase(plan, input),
+    checkSeasoningAssumptions(plan),
     checkTimeBudget(plan, input.maxMinutes),
     checkPriorityCoverage(plan, input),
-    checkMealCoherence(plan),
+    checkMealCoherence(plan, input),
   ];
 }
 

@@ -1,4 +1,5 @@
 import { extractRecipeRequirements, ingredientMatches, splitIngredientInput } from "./ingredient-normalizer";
+import { DEFAULT_PANTRY, seasoningKind } from "./pantry-presets";
 import type { PantryCoverage, PlanInput, PlanOption, Recipe } from "./types";
 import type { RecipeMatch } from "./pantry-ranker";
 
@@ -20,12 +21,24 @@ function role(recipe: Recipe) {
   return requirements.some((item) => proteinPattern.test(item.name)) ? "main" : "side";
 }
 
-function coherentPair(left: Recipe, right: Recipe) {
-  const leftRole = role(left);
-  const rightRole = role(right);
-  if (leftRole === "main" && rightRole === "main") return false;
-  if (leftRole === "staple" && rightRole === "staple") return false;
-  return left.technique !== right.technique || leftRole !== rightRole;
+function coherentSet(recipes: Recipe[]) {
+  const roles = recipes.map(role);
+  if (new Set(recipes.map((recipe) => recipe.name)).size !== recipes.length) return false;
+  if (roles.filter((item) => item === "main").length > Math.max(1, Math.ceil(recipes.length / 2))) return false;
+  if (roles.filter((item) => item === "staple").length > 1) return false;
+  if (recipes.length > 1 && new Set(roles).size === 1) return false;
+  return recipes.length === 1 || new Set(recipes.map((recipe) => recipe.technique)).size > 1;
+}
+
+function combinations<T>(items: T[], count: number, start = 0, prefix: T[] = [], output: T[][] = []) {
+  if (prefix.length === count) {
+    output.push(prefix);
+    return output;
+  }
+  for (let index = start; index <= items.length - (count - prefix.length); index += 1) {
+    combinations(items, count, index + 1, [...prefix, items[index]], output);
+  }
+  return output;
 }
 
 function estimatePlanTime(recipes: Recipe[]) {
@@ -37,16 +50,24 @@ function estimatePlanTime(recipes: Recipe[]) {
 function buildCoverage(recipes: Recipe[], input: PlanInput): PantryCoverage {
   const available = splitIngredientInput(input.ingredients);
   const priority = splitIngredientInput(input.priorityIngredients);
-  const pantry = splitIngredientInput(input.pantry);
+  const unavailableSeasonings = splitIngredientInput(input.unavailableSeasonings);
   const required = unique(recipes.flatMap((recipe) =>
     extractRecipeRequirements(recipe.ingredients).filter((item) => !item.optional).map((item) => item.name),
   ));
   const used = available.filter((item) => required.some((requirement) => ingredientMatches(requirement, item)));
   const priorityUsed = priority.filter((item) => required.some((requirement) => ingredientMatches(requirement, item)));
-  const pantryUsed = pantry.filter((item) => required.some((requirement) => ingredientMatches(requirement, item)));
+  const pantryUsed = DEFAULT_PANTRY.filter((item) =>
+    required.some((requirement) => seasoningKind(requirement, unavailableSeasonings) === "default" && ingredientMatches(requirement, item)),
+  );
+  const specialtySeasonings = required.filter((requirement) =>
+    seasoningKind(requirement, unavailableSeasonings) === "specialty",
+  );
+  const blockedSeasonings = required.filter((requirement) =>
+    seasoningKind(requirement, unavailableSeasonings) === "blocked",
+  );
   const missing = required.filter((requirement) =>
     !available.some((item) => ingredientMatches(requirement, item)) &&
-    !pantry.some((item) => ingredientMatches(requirement, item)),
+    seasoningKind(requirement, unavailableSeasonings) === null,
   );
   return {
     used: unique(used),
@@ -54,12 +75,14 @@ function buildCoverage(recipes: Recipe[], input: PlanInput): PantryCoverage {
     priorityUsed: unique(priorityUsed),
     priorityUnused: priority.filter((item) => !priorityUsed.includes(item)),
     pantryUsed: unique(pantryUsed),
+    specialtySeasonings: unique(specialtySeasonings),
+    blockedSeasonings: unique(blockedSeasonings),
     missing: unique(missing),
     ratio: available.length ? used.length / available.length : 1,
   };
 }
 
-function toPlan(recipes: Recipe[], input: PlanInput, baseScore: number): PlanOption {
+export function createPlanFromRecipes(recipes: Recipe[], input: PlanInput, baseScore: number): PlanOption {
   const coverage = buildCoverage(recipes, input);
   const { activeMinutes, totalMinutes } = estimatePlanTime(recipes);
   const fitsTime = totalMinutes <= input.maxMinutes;
@@ -81,7 +104,7 @@ function toPlan(recipes: Recipe[], input: PlanInput, baseScore: number): PlanOpt
     servings: input.servings,
     tags: input.mode === "dish"
       ? ["真实菜谱", "可信来源", "原始做法"]
-      : ["真实菜谱", "零新增食材", recipes.length > 1 ? "分开烹饪" : "单菜方案"],
+      : ["真实菜谱", "零新增主食材", recipes.length > 1 ? "分开烹饪" : "单菜方案"],
     rationale: input.mode === "dish"
       ? `保留“${title}”的真实技法与耗时；时间预算只触发提示，不会篡改做法。`
       : priorityTotal
@@ -98,21 +121,14 @@ function toPlan(recipes: Recipe[], input: PlanInput, baseScore: number): PlanOpt
 
 export function buildIngredientPlans(matches: RecipeMatch[], input: PlanInput, limit = 2) {
   const cookable = matches.filter((match) => match.cookable).slice(0, 12);
-  const variants: PlanOption[] = cookable.map((match) => toPlan([match.recipe], input, match.score));
-
-  if (input.planScope === "meal") {
-    for (let left = 0; left < cookable.length; left += 1) {
-      for (let right = left + 1; right < cookable.length; right += 1) {
-        const first = cookable[left];
-        const second = cookable[right];
-        if (!coherentPair(first.recipe, second.recipe)) continue;
-        variants.push(toPlan([first.recipe, second.recipe], input, first.score + second.score));
-      }
-    }
-  }
+  const variants: PlanOption[] = input.planScope === "single"
+    ? cookable.map((match) => createPlanFromRecipes([match.recipe], input, match.score))
+    : combinations(cookable, input.dishCount)
+      .filter((set) => coherentSet(set.map((match) => match.recipe)))
+      .map((set) => createPlanFromRecipes(set.map((match) => match.recipe), input, set.reduce((sum, match) => sum + match.score, 0)));
 
   return variants
-    .filter((plan) => plan.coverage.missing.length === 0)
+    .filter((plan) => plan.coverage.missing.length === 0 && plan.coverage.blockedSeasonings.length === 0)
     .sort((left, right) => {
       const leftPriority = left.coverage.priorityUsed.length - left.coverage.priorityUnused.length;
       const rightPriority = right.coverage.priorityUsed.length - right.coverage.priorityUnused.length;
@@ -126,5 +142,5 @@ export function buildIngredientPlans(matches: RecipeMatch[], input: PlanInput, l
 }
 
 export function buildDishPlans(recipes: Recipe[], input: PlanInput) {
-  return recipes.map((recipe) => toPlan([recipe], input, recipe.confidence * 100));
+  return recipes.map((recipe) => createPlanFromRecipes([recipe], input, recipe.confidence * 100));
 }

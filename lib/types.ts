@@ -27,8 +27,8 @@ export type RecipeDifficulty = "简单" | "中等" | "困难" | "大师级";
 export interface RecipeSource {
   title: string;
   url: string;
-  license: "Unlicense" | "Project gold set";
-  kind: "howtocook" | "gold";
+  license: "Unlicense" | "Project gold set" | "AI generated";
+  kind: "howtocook" | "gold" | "deepseek";
 }
 
 export interface Recipe {
@@ -56,8 +56,9 @@ export interface PlanInput {
   dishName: string;
   ingredients: string;
   priorityIngredients: string;
-  pantry: string;
+  unavailableSeasonings: string;
   planScope: PlanScope;
+  dishCount: number;
   taste: string;
   allergens: string;
   servings: number;
@@ -70,6 +71,8 @@ export interface PantryCoverage {
   priorityUsed: string[];
   priorityUnused: string[];
   pantryUsed: string[];
+  specialtySeasonings: string[];
+  blockedSeasonings: string[];
   missing: string[];
   ratio: number;
 }
@@ -95,6 +98,7 @@ export interface GuardrailResult {
     | "check_source_grounding"
     | "check_allergens"
     | "check_no_purchase"
+    | "check_seasoning_assumptions"
     | "check_time_budget"
     | "check_priority_coverage"
     | "check_meal_coherence";
@@ -107,7 +111,7 @@ export interface PlanResponse {
   plans: PlanOption[];
   guardrails: Record<string, GuardrailResult[]>;
   traces: TraceEvent[];
-  mode: "local";
+  mode: "deepseek" | "local" | "local_fallback";
   retrieval: {
     query: string;
     indexSize: number;
@@ -119,7 +123,7 @@ export interface PlanResponse {
 }
 
 export interface PersistedSession {
-  version: 2;
+  version: 3;
   input: PlanInput;
   status: RunStatus;
   plans: PlanOption[];

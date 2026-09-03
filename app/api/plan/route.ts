@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
+import { generateDeepSeekPlans, selectDiversePlans } from "@/lib/deepseek-planner";
 import { hasHardFailure, runPlanGuardrails } from "@/lib/guardrails";
 import { splitIngredientInput } from "@/lib/ingredient-normalizer";
 import { buildDishPlans, buildIngredientPlans } from "@/lib/meal-planner";
 import { rankPantryRecipes, summarizeNearest } from "@/lib/pantry-ranker";
 import { getTrustedRecipes, searchDishRecipes, trustedRecipeCount } from "@/lib/recipe-repository";
 import { trace } from "@/lib/trace";
-import type { PlanInput, PlanResponse } from "@/lib/types";
+import type { PlanInput, PlanOption, PlanResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
-
-const defaultPantry = "食用油、盐、水、生抽、老抽、料酒、白糖、醋、葱、姜、蒜、淀粉、蚝油";
 
 function text(value: unknown, max: number) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -27,8 +26,11 @@ function parseInput(value: unknown): PlanInput | null {
     dishName,
     ingredients,
     priorityIngredients: text(data.priorityIngredients, 160),
-    pantry: text(data.pantry, 240) || defaultPantry,
+    unavailableSeasonings: text(data.unavailableSeasonings, 160),
     planScope: data.planScope === "single" ? "single" : "meal",
+    dishCount: data.planScope === "single"
+      ? 1
+      : typeof data.dishCount === "number" ? Math.min(4, Math.max(2, Math.round(data.dishCount))) : 2,
     taste: text(data.taste, 80),
     allergens: text(data.allergens, 120),
     servings: typeof data.servings === "number" ? Math.min(8, Math.max(1, Math.round(data.servings))) : 2,
@@ -54,7 +56,8 @@ export async function POST(request: Request) {
     ),
   ];
 
-  let plans;
+  let plans: PlanOption[] = [];
+  let responseMode: PlanResponse["mode"] = "local";
   let candidateCount = 0;
   let cookableCount = 0;
   let matchedNames: string[] = [];
@@ -75,49 +78,84 @@ export async function POST(request: Request) {
       ),
     );
   } else {
-    const recipes = getTrustedRecipes(input);
-    const matches = rankPantryRecipes(recipes, input);
-    const cookable = matches.filter((match) => match.cookable);
-    candidateCount = matches.length;
-    cookableCount = cookable.length;
-    matchedNames = matches.slice(0, 8).map((match) => match.recipe.name);
-    plans = buildIngredientPlans(matches, input, 2);
-    traces.push(
-      trace(
-        "tool",
-        "trusted-recipe-retriever · 可信召回",
-        `扫描 ${trustedRecipeCount} 道真实菜谱，找到 ${candidateCount} 道含现有食材的候选。`,
-        candidateCount ? "success" : "warning",
-        19,
-      ),
-      trace(
-        "planner",
-        "pantry-ranker · 零采购排序",
-        `${cookableCount} 道菜可只用现有食材和已声明调料完成；缺料候选不会进入执行区。`,
-        cookableCount ? "success" : "warning",
-        13,
-      ),
-      trace(
-        "planner",
-        "meal-set-planner · 一餐组合",
-        plans.length ? `组合出 ${plans.length} 套可信方案，不强迫一顿用完全部库存。` : "没有形成满足零采购约束的真实一餐。",
-        plans.length ? "success" : "warning",
-        11,
-      ),
-    );
+    if (process.env.DEEPSEEK_API_KEY) {
+      try {
+        const generated = await generateDeepSeekPlans(input);
+        plans = generated.plans;
+        responseMode = "deepseek";
+        candidateCount = plans.length;
+        cookableCount = plans.length;
+        matchedNames = plans.flatMap((plan) => plan.recipes.map((recipe) => recipe.name));
+        traces.push(
+          trace(
+            "planner",
+            "deepseek-meal-planner · 结构化生成",
+            `${generated.model} 生成候选并完成 ${generated.attempts} 轮校验；${generated.rejectedCount} 套不合格方案被拒绝。`,
+            "success",
+            0,
+          ),
+          trace(
+            "tool",
+            "json-schema-parser · 结构解析",
+            `已得到 ${plans.length} 套互不重复的结构化菜单，每套恰好 ${input.planScope === "single" ? 1 : input.dishCount} 道菜。`,
+            "success",
+            0,
+          ),
+        );
+      } catch (error) {
+        responseMode = "local_fallback";
+        const detail = error instanceof Error ? error.message : "未知错误";
+        traces.push(trace("planner", "deepseek-meal-planner · 安全降级", `${detail} 已自动切换到本地可信菜谱。`, "warning"));
+      }
+    } else {
+      traces.push(trace("planner", "deepseek-meal-planner · 未启用", "未检测到服务端 DEEPSEEK_API_KEY，使用本地可信菜谱兜底。", "warning"));
+    }
 
     if (!plans.length) {
-      const nearest = summarizeNearest(matches);
-      traces.push(trace("state", "停止执行", "没有可信菜谱能在零采购条件下闭环，系统拒绝编造菜名。", "warning"));
-      return NextResponse.json(
-        {
-          error: nearest.length
-            ? `暂时没有可零采购完成的可信菜谱。最接近的是：${nearest.join("；")}。可补充你家已有的基础调料后重试。`
-            : "暂时没有找到使用这些食材的可信菜谱，请尝试更常见的食材名称。",
-          traces,
-        },
-        { status: 422 },
+      const recipes = getTrustedRecipes(input);
+      const matches = rankPantryRecipes(recipes, input);
+      const cookable = matches.filter((match) => match.cookable);
+      candidateCount = matches.length;
+      cookableCount = cookable.length;
+      matchedNames = matches.slice(0, 8).map((match) => match.recipe.name);
+      plans = selectDiversePlans(buildIngredientPlans(matches, input, 8), 2);
+      traces.push(
+        trace(
+          "tool",
+          "trusted-recipe-retriever · 本地兜底召回",
+          `扫描 ${trustedRecipeCount} 道真实菜谱，找到 ${candidateCount} 道含现有食材的候选。`,
+          candidateCount ? "success" : "warning",
+          19,
+        ),
+        trace(
+          "planner",
+          "pantry-ranker · 库存闭包排序",
+          `${cookableCount} 道菜无需新增主要食材；基础调料默认拥有，特殊调料单独提示。`,
+          cookableCount ? "success" : "warning",
+          13,
+        ),
+        trace(
+          "planner",
+          "meal-set-planner · 一餐组合",
+          plans.length ? `组合出 ${plans.length} 套可信方案，不强迫一顿用完全部库存。` : "没有形成满足主要食材闭包的真实一餐。",
+          plans.length ? "success" : "warning",
+          11,
+        ),
       );
+
+      if (!plans.length) {
+        const nearest = summarizeNearest(matches);
+        traces.push(trace("state", "停止执行", "没有候选能在主要食材零新增条件下闭环，系统拒绝展示违规方案。", "warning"));
+        return NextResponse.json(
+          {
+            error: nearest.length
+              ? `暂时没有无需新增主要食材的可执行方案。最接近的是：${nearest.join("；")}。`
+              : "暂时没有找到使用这些食材的可执行方案，请尝试更常见的食材名称。",
+            traces,
+          },
+          { status: 422 },
+        );
+      }
     }
   }
 
@@ -137,7 +175,7 @@ export async function POST(request: Request) {
       "guardrail",
       "plan-guardrails · 确定性复核",
       accepted.length === plans.length
-        ? "来源、过敏原、零采购和一餐结构硬约束全部通过。"
+        ? "来源、过敏原、主要食材闭包和一餐结构硬约束全部通过。"
         : `${plans.length - accepted.length} 套方案被硬约束拦截。`,
       accepted.length === plans.length ? "success" : "warning",
       9,
@@ -145,7 +183,7 @@ export async function POST(request: Request) {
   );
 
   if (!accepted.length) {
-    return NextResponse.json({ error: "候选方案未通过安全或零采购校验，请调整过敏原或库存。", traces }, { status: 422 });
+    return NextResponse.json({ error: "候选方案未通过安全或主要食材校验，请调整过敏原或库存。", traces }, { status: 422 });
   }
 
   traces.push(trace("approval", "Human-in-the-loop · 等待确认", "Agent 已暂停；请选择一套真实方案后再开始做饭。", "waiting"));
@@ -153,7 +191,7 @@ export async function POST(request: Request) {
     plans: accepted,
     guardrails,
     traces,
-    mode: "local",
+    mode: responseMode,
     retrieval: {
       query: input.mode === "dish" ? input.dishName : input.ingredients,
       indexSize: trustedRecipeCount,
@@ -163,7 +201,9 @@ export async function POST(request: Request) {
     },
     notice: input.mode === "dish"
       ? "只返回有本地来源的完整菜谱；不会为了时间限制改写成快手模板。"
-      : "只执行零新增食材的真实菜谱；未用库存会保留到下一顿，不会强行混菜。",
+      : responseMode === "deepseek"
+      ? "DeepSeek 已按结构化约束规划，结果又经过本地 Guardrail 复核；特殊调料会单独提示。"
+      : "DeepSeek 当前未启用或不可用，已使用本地可信菜谱兜底；主要食材仍坚持零新增。",
   };
   return NextResponse.json(response);
 }

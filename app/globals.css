@@ -2658,6 +2658,7 @@ select {
 }
 
 .mode-local .status-dot { background: #1749df; }
+.mode-deepseek .status-dot { background: #ff3b30; }
 
 @media (max-width: 420px) {
   .mode-switch { grid-template-columns: 1fr; }
@@ -2724,7 +2725,83 @@ select {
   outline-offset: 2px;
 }
 
-.pantry-field { gap: 7px; }
+.dish-count-field {
+  padding: 10px;
+  background: #fff3b7;
+  border: 1px dashed var(--color-foreground);
+  border-radius: 12px;
+}
+
+.seasoning-settings {
+  overflow: clip;
+  background: #fff8ec;
+  border: 1px solid var(--color-foreground);
+  border-radius: 12px;
+  transition: background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.seasoning-settings[open] {
+  background: #fffdf5;
+  box-shadow: 2px 2px 0 rgb(23 18 15 / 12%);
+}
+
+.seasoning-settings summary {
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.seasoning-settings summary::-webkit-details-marker { display: none; }
+.seasoning-settings summary:hover { background: rgb(255 255 255 / 55%); }
+.seasoning-settings summary:focus-visible { outline: 3px solid #1749df; outline-offset: -3px; }
+
+.seasoning-summary-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: #1749df;
+  border: 1px solid var(--color-foreground);
+  border-radius: 9px;
+}
+
+.seasoning-settings summary > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+}
+
+.seasoning-settings summary strong { font-size: 11px; font-weight: 950; }
+.seasoning-settings summary small { color: #655a50; font-size: 9px; font-weight: 750; }
+
+.seasoning-chevron {
+  transition: transform 180ms ease;
+}
+
+.seasoning-settings[open] .seasoning-chevron { transform: rotate(180deg); }
+
+.seasoning-settings-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 10px 11px;
+  border-top: 1px dashed rgb(23 18 15 / 35%);
+}
+
+.seasoning-settings-body > p {
+  margin: 10px 0 0;
+  color: #655a50;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.5;
+}
 
 .zero-purchase-lock {
   min-height: 44px;
@@ -2771,12 +2848,31 @@ select {
   font-weight: 750;
 }
 
+.inventory-proof .seasoning-warning {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 7px;
+  color: #6b3515;
+  background: #fff3ce;
+  border: 1px solid #c98538;
+  border-radius: 7px;
+}
+
+.seasoning-warning svg { flex: 0 0 auto; }
+
 .inventory-proof-ok { color: #24643c; }
 
 @media (max-width: 420px) {
   .scope-switch { grid-template-columns: 1fr; }
   .inventory-proof { grid-template-columns: 1fr; }
   .inventory-proof small { grid-column: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seasoning-settings,
+  .seasoning-chevron { transition: none; }
 }
 
 /* Trusted pantry planner: meal evidence and single completion */

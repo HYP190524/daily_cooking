@@ -4,6 +4,7 @@ import { goldRecipes } from "../data/gold-recipes";
 import { ingredientMatches, normalizeIngredient } from "../lib/ingredient-normalizer";
 import { buildIngredientPlans } from "../lib/meal-planner";
 import { rankPantryRecipes } from "../lib/pantry-ranker";
+import { isDefaultPantryIngredient, isSpecialtySeasoning } from "../lib/pantry-presets";
 import { getTechniqueCoverage, getTrustedRecipes, searchDishRecipes } from "../lib/recipe-repository";
 import type { PlanInput } from "../lib/types";
 
@@ -13,8 +14,9 @@ function input(overrides: Partial<PlanInput> = {}): PlanInput {
     dishName: "",
     ingredients: "鸡腿、土豆、青菜、米饭",
     priorityIngredients: "鸡腿、青菜",
-    pantry: "食用油、盐、水、生抽、老抽、料酒、白糖、醋、葱、姜、蒜、淀粉、蚝油",
+    unavailableSeasonings: "",
     planScope: "meal",
+    dishCount: 2,
     taste: "家常、不辣",
     allergens: "花生",
     servings: 2,
@@ -61,6 +63,22 @@ test("pantry ranking returns only trusted zero-purchase recipes", () => {
   }
 });
 
+test("default pantry removes form friction and specialty seasonings remain visible", () => {
+  assert.equal(isDefaultPantryIngredient("食用盐"), true);
+  assert.equal(isDefaultPantryIngredient("姜片"), true);
+  assert.equal(isSpecialtySeasoning("蚝油"), true);
+  assert.equal(isSpecialtySeasoning("土豆"), false);
+});
+
+test("seasonings explicitly marked unavailable exclude dependent recipes", () => {
+  const query = input({ unavailableSeasonings: "料酒" });
+  const matches = rankPantryRecipes(getTrustedRecipes(query), query);
+  const chicken = matches.find((match) => match.recipe.name === "土豆烧鸡腿");
+  assert.ok(chicken);
+  assert.equal(chicken.cookable, false);
+  assert.ok(chicken.blockedSeasonings.includes("料酒"));
+});
+
 test("meal planner creates realistic separate dishes and allows unused inventory", () => {
   const query = input();
   const plans = buildIngredientPlans(rankPantryRecipes(getTrustedRecipes(query), query), query, 2);
@@ -75,7 +93,7 @@ test("meal planner creates realistic separate dishes and allows unused inventory
 });
 
 test("unknown inventory returns no false grounded match", () => {
-  const query = input({ ingredients: "火星岩石", priorityIngredients: "", pantry: "盐、水" });
+  const query = input({ ingredients: "火星岩石", priorityIngredients: "" });
   const matches = rankPantryRecipes(getTrustedRecipes(query), query);
   assert.equal(matches.length, 0);
 });

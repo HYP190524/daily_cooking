@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   checkAllergens,
   checkNoPurchase,
+  checkSeasoningAssumptions,
   checkSourceGrounding,
   checkTimeBudget,
   hasHardFailure,
@@ -18,8 +19,9 @@ const input: PlanInput = {
   dishName: "",
   ingredients: "鸡腿、土豆、青菜、米饭",
   priorityIngredients: "鸡腿、青菜",
-  pantry: "食用油、盐、水、生抽、老抽、料酒、白糖、醋、葱、姜、蒜、淀粉、蚝油",
+  unavailableSeasonings: "",
   planScope: "meal",
+  dishCount: 2,
   taste: "家常、不辣",
   allergens: "花生",
   servings: 2,
@@ -58,6 +60,21 @@ test("time overrun is honest soft warning, not a fake fast recipe", () => {
   assert.match(check.detail, /真实做法/);
 });
 
+test("generated plans that exceed the selected time are rejected", () => {
+  const plan = trustedPlan();
+  const generated = {
+    ...plan,
+    totalMinutes: 95,
+    recipes: plan.recipes.map((recipe) => ({
+      ...recipe,
+      source: { title: "DeepSeek", url: "https://api-docs.deepseek.com/", license: "AI generated" as const, kind: "deepseek" as const },
+    })),
+  };
+  const check = checkTimeBudget(generated, 30);
+  assert.equal(check.passed, false);
+  assert.equal(check.severity, "hard");
+});
+
 test("dish lookup preserves original recipe without inventory closure", () => {
   const dishInput = { ...input, mode: "dish" as const, dishName: "佛跳墙", ingredients: "", maxMinutes: 30 };
   const plan = buildDishPlans(searchDishRecipes(dishInput, 1), dishInput)[0];
@@ -79,4 +96,21 @@ test("missing groceries and ungrounded sources are hard failures", () => {
     }],
   };
   assert.equal(checkSourceGrounding(ungrounded).passed, false);
+});
+
+test("specialty seasonings are disclosed softly while explicit exclusions fail closed", () => {
+  const plan = trustedPlan();
+  const specialty = {
+    ...plan,
+    coverage: { ...plan.coverage, specialtySeasonings: ["蚝油"] },
+  };
+  const warning = checkSeasoningAssumptions(specialty);
+  assert.equal(warning.passed, false);
+  assert.equal(warning.severity, "soft");
+
+  const blocked = {
+    ...plan,
+    coverage: { ...plan.coverage, blockedSeasonings: ["料酒"] },
+  };
+  assert.equal(checkNoPurchase(blocked, input).passed, false);
 });
