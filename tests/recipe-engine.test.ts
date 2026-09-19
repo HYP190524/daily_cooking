@@ -24,9 +24,9 @@ function input(overrides: Partial<PlanInput> = {}): PlanInput {
   };
 }
 
-test("gold set contains 23 manually checked complete recipes", () => {
-  assert.equal(goldRecipes.length, 23);
-  assert.equal(new Set(goldRecipes.map((recipe) => recipe.name)).size, 23);
+test("gold set contains 24 manually checked complete recipes", () => {
+  assert.equal(goldRecipes.length, 24);
+  assert.equal(new Set(goldRecipes.map((recipe) => recipe.name)).size, 24);
   for (const recipe of goldRecipes) {
     assert.ok(recipe.steps.length >= 4, recipe.name);
     assert.ok(recipe.ingredients.length >= 5, recipe.name);
@@ -102,8 +102,15 @@ test("single-dish mode cannot silently drop a required inventory item", () => {
   assert.ok(beefPlans.every((plan) => plan.coverage.used.includes("牛肉")));
 });
 
-test("nearest fallback keeps a real recipe visible when one dish cannot cover all ingredients", () => {
+test("tomato beef potato inventory has a complete trusted single-dish fallback", () => {
   const query = input({ ingredients: "牛肉、土豆、番茄", planScope: "single", dishCount: 1 });
+  const plans = buildIngredientPlans(rankPantryRecipes(getTrustedRecipes(query), query), query, 2);
+  assert.ok(plans.some((plan) => plan.title === "番茄土豆炖牛肉"));
+  assert.ok(plans.every((plan) => plan.coverage.unused.length === 0));
+});
+
+test("nearest fallback keeps a real recipe visible when one dish cannot cover all ingredients", () => {
+  const query = input({ ingredients: "牛肉、土豆、芹菜", planScope: "single", dishCount: 1 });
   const matches = rankPantryRecipes(getTrustedRecipes(query), query);
   const strictPlans = buildIngredientPlans(matches, query, 2);
   const nearestPlans = buildClosestIngredientPlans(matches, query, 2);

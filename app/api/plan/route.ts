@@ -119,7 +119,11 @@ export async function POST(request: Request) {
       cookableCount = cookable.length;
       matchedNames = matches.slice(0, 8).map((match) => match.recipe.name);
       plans = selectDiversePlans(buildIngredientPlans(matches, input, 8), 2);
-      if (!plans.length && cookable.length) {
+      // A partial recipe is only a valid fallback when the user explicitly
+      // chose meal mode. Single-dish mode promises one dish covering all
+      // entered ingredients, so never show a potato-only plan for beef/tomato
+      // inventory just because it is the highest local score.
+      if (!plans.length && cookable.length && input.planScope === "meal") {
         plans = selectDiversePlans(buildClosestIngredientPlans(matches, input, 8), 2);
         partialInventoryFallback = plans.some((plan) => plan.coverage.unused.length > 0);
       }
@@ -157,7 +161,9 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             error: nearest.length
-              ? `暂时没有可执行的完整方案。最接近的是：${nearest.join("；")}。`
+              ? input.planScope === "single"
+                ? `单菜模式要求一道菜覆盖全部主要食材，当前没有满足“${input.ingredients}”的可信菜谱。最接近的是：${nearest.join("；")}。请切换“多道菜·分开消耗”，或减少本次库存。`
+                : `暂时没有可执行的完整方案。最接近的是：${nearest.join("；")}。`
               : "暂时没有找到使用这些食材的可执行方案，请尝试更常见的食材名称。",
             traces,
           },

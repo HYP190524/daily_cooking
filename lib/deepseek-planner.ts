@@ -259,7 +259,7 @@ function validationSummary(plans: PlanOption[], input: PlanInput) {
 
 function buildPrompt(input: PlanInput, repairFeedback: string[]) {
   const expectedDishCount = input.planScope === "single" ? 1 : input.dishCount;
-  const candidateCount = input.planScope === "single" ? 2 : 4;
+  const candidateCount = input.planScope === "single" ? 1 : 4;
   const constraints = {
     inventory: input.ingredients,
     assumedBasicSeasonings: DEFAULT_PANTRY,
@@ -342,10 +342,12 @@ export async function generateDeepSeekPlans(input: PlanInput): Promise<DeepSeekP
     const accepted = candidates.filter((plan) => !hasHardFailure(runPlanGuardrails(plan, input)));
     rejectedCount += candidates.length - accepted.length;
     const requiredPlanCount = input.planScope === "single" ? 1 : 2;
-    const diverse = selectDiversePlans(accepted, 2);
+    const diverse = selectDiversePlans(accepted, requiredPlanCount);
     if (diverse.length >= requiredPlanCount) return { plans: diverse, attempts: attempt, rejectedCount, model };
     feedback = validationSummary(candidates, input);
   }
 
-  throw new Error("DeepSeek 连续两次未生成满足硬约束且彼此不同的方案。");
+  throw new Error(input.planScope === "single"
+    ? "DeepSeek 连续两次未生成满足库存与安全约束的单菜方案。"
+    : "DeepSeek 连续两次未生成满足硬约束且彼此不同的方案。");
 }
