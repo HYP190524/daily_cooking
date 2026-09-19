@@ -24,9 +24,9 @@ function input(overrides: Partial<PlanInput> = {}): PlanInput {
   };
 }
 
-test("gold set contains 24 manually checked complete recipes", () => {
-  assert.equal(goldRecipes.length, 24);
-  assert.equal(new Set(goldRecipes.map((recipe) => recipe.name)).size, 24);
+test("gold set contains 25 manually checked complete recipes", () => {
+  assert.equal(goldRecipes.length, 25);
+  assert.equal(new Set(goldRecipes.map((recipe) => recipe.name)).size, 25);
   for (const recipe of goldRecipes) {
     assert.ok(recipe.steps.length >= 4, recipe.name);
     assert.ok(recipe.ingredients.length >= 5, recipe.name);
@@ -106,6 +106,13 @@ test("tomato beef potato inventory has a complete trusted single-dish fallback",
   const query = input({ ingredients: "牛肉、土豆、番茄", planScope: "single", dishCount: 1 });
   const plans = buildIngredientPlans(rankPantryRecipes(getTrustedRecipes(query), query), query, 2);
   assert.ok(plans.some((plan) => plan.title === "番茄土豆炖牛肉"));
+  assert.ok(plans.every((plan) => plan.coverage.unused.length === 0));
+});
+
+test("beef and coriander inventory has a complete trusted single-dish fallback", () => {
+  const query = input({ ingredients: "牛肉、香菜", planScope: "single", dishCount: 1 });
+  const plans = buildIngredientPlans(rankPantryRecipes(getTrustedRecipes(query), query), query, 2);
+  assert.ok(plans.some((plan) => plan.title === "香菜拌牛肉"));
   assert.ok(plans.every((plan) => plan.coverage.unused.length === 0));
 });
 

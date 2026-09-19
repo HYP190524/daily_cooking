@@ -23,7 +23,7 @@ flowchart LR
   Validate -->|不通过| Repair[携带错误自动修复 1 次]
   Repair --> Validate
   Validate -->|接口不可用| Retrieve[trusted-recipe-retriever]
-  Retrieve --> Gold[24 道手工校验菜]
+  Retrieve --> Gold[25 道手工校验菜]
   Retrieve --> HTC[302 道 HowToCook 索引]
   Retrieve --> Rank[pantry-ranker]
   Rank --> Meal[meal-set-planner]
@@ -52,7 +52,7 @@ flowchart LR
 - localStorage 运行状态恢复
 - DeepSeek Responses API + JSON Schema
 - 302 道 HowToCook 静态索引（Unlicense，作为本地兜底）
-- 24 道手工校验高价值菜谱
+- 25 道手工校验高价值菜谱
 - Node Test Runner + `tsx`
 
 ## 本地运行
@@ -103,7 +103,7 @@ npm run build
 ## 数据说明
 
 - `data/howtocook-index.json`：从 [HowToCook](https://github.com/Anduin2017/HowToCook) 构建的本地索引，来源说明见 `data/HOWTOCOOK-NOTICE.md`。
-- `data/gold-recipes.ts`：24 道人工补齐菜谱，覆盖炒、蒸、煮、炖、煨、炸、烤、凉拌等技法。
+- `data/gold-recipes.ts`：25 道人工补齐菜谱，覆盖炒、蒸、煮、炖、煨、炸、烤、凉拌等技法。
 - `scripts/build-howtocook-index.mjs`：重新生成索引的脚本。
 - `tests/`：验证食材别名、可信召回、主要食材闭包、调料预设、一餐组合与七类 Guardrail。
 
