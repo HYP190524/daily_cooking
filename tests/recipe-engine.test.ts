@@ -36,6 +36,9 @@ test("gold set contains 25 manually checked complete recipes", () => {
 
 test("normalizer expands true aliases but keeps carrot and white radish distinct", () => {
   assert.equal(normalizeIngredient("琵琶腿 2只"), "鸡腿");
+  assert.equal(normalizeIngredient("牛肉片 200g"), "牛肉");
+  assert.equal(normalizeIngredient("香菜段"), "香菜");
+  assert.equal(ingredientMatches("牛肉片", "牛肉"), true);
   assert.equal(ingredientMatches("胡萝卜", "白萝卜"), false);
   assert.equal(ingredientMatches("鸡肉", "鸡腿"), true);
 });
