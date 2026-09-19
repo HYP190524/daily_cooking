@@ -57,12 +57,29 @@ const specialtySeasonings = [
 
 const normalizedSpecialtySeasonings = new Set(specialtySeasonings.map(normalizeIngredient));
 
+function aromaticFamily(value: string) {
+  const normalized = normalizeIngredient(value);
+  // Aromatics are kitchen basics, not inventory-closing main ingredients.
+  // Keep this lexical on purpose so “蒜2瓣”“姜片”“葱段” do not depend on
+  // quantity parsing. Vegetable forms such as 蒜苗/蒜苔 remain inventory.
+  if (/^(?:小葱|大葱|香葱|葱)/.test(normalized) && !/^葱头/.test(normalized)) return "葱";
+  if (/^姜/.test(normalized)) return "姜";
+  if (/^蒜/.test(normalized) && !/^蒜(?:苗|苔|薹)/.test(normalized)) return "蒜";
+  return "";
+}
+
 function matchesAny(target: string, candidates: string[]) {
-  return candidates.some((candidate) => ingredientMatches(target, candidate));
+  const normalizedTarget = normalizeIngredient(target);
+  return candidates.some((candidate) => {
+    const normalizedCandidate = normalizeIngredient(candidate);
+    return ingredientMatches(target, candidate)
+      || (aromaticFamily(normalizedTarget) !== ""
+        && aromaticFamily(normalizedTarget) === aromaticFamily(normalizedCandidate));
+  });
 }
 
 export function isDefaultPantryIngredient(value: string) {
-  return matchesAny(value, DEFAULT_PANTRY);
+  return aromaticFamily(value) !== "" || matchesAny(value, DEFAULT_PANTRY);
 }
 
 export function isSpecialtySeasoning(value: string) {

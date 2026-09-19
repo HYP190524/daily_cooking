@@ -1,5 +1,6 @@
 const aliasGroups: Record<string, string[]> = {
   鸡腿: ["琵琶腿", "鸡小腿", "手枪腿", "大鸡腿", "鸡腿肉"],
+  鸡翅: ["鸡中翅", "鸡翅中", "鸡翅根", "新鲜鸡翅"],
   鸡胸肉: ["鸡胸", "鸡脯肉"],
   鸡肉: ["仔鸡", "整鸡"],
   牛肉: ["牛腩", "牛里脊", "牛腱", "牛肉片", "牛肉块", "牛肉末", "牛肉丝", "肥牛"],
@@ -14,9 +15,10 @@ const aliasGroups: Record<string, string[]> = {
   红薯: ["地瓜"],
   盐: ["食盐", "食用盐", "海盐"],
   醋: ["白醋", "陈醋", "香醋", "米醋"],
-  葱: ["小葱", "大葱", "香葱", "葱花"],
+  葱: ["小葱", "大葱", "香葱", "葱花", "葱段", "小葱花"],
   姜: ["生姜", "姜片", "姜末"],
   蒜: ["大蒜", "蒜头", "蒜瓣", "蒜末", "蒜蓉"],
+  料酒: ["黄酒", "黄酒或料酒"],
   生抽: ["酱油", "生抽酱油"],
   食用油: ["植物油", "菜籽油", "花生油", "玉米油"],
   白糖: ["糖", "砂糖", "白砂糖"],
@@ -86,7 +88,12 @@ export function extractRecipeRequirements(lines: string[]) {
   const requirements: IngredientRequirement[] = [];
   for (const line of lines) {
     const optional = optionalPattern.test(line);
-    const fragments = line.split(/[，,、；;]+/);
+    // HowToCook entries often put recommendations in parentheses, and those
+    // recommendations can contain commas. Remove the parenthetical prose
+    // before splitting so "新鲜鸡翅（推荐选择鸡翅中，肉质更嫩）" remains one
+    // retrievable ingredient instead of becoming two malformed requirements.
+    const cleanedLine = line.replace(/[（(][^）)]*[）)]/g, "");
+    const fragments = cleanedLine.split(/[，,、；;]+/);
     for (const fragment of fragments) {
       const raw = fragment.trim();
       const name = normalizeIngredient(raw);

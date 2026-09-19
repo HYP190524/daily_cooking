@@ -68,8 +68,20 @@ test("pantry ranking returns only trusted zero-purchase recipes", () => {
 test("default pantry removes form friction and specialty seasonings remain visible", () => {
   assert.equal(isDefaultPantryIngredient("食用盐"), true);
   assert.equal(isDefaultPantryIngredient("姜片"), true);
+  assert.equal(isDefaultPantryIngredient("蒜2瓣"), true);
+  assert.equal(isDefaultPantryIngredient("葱段"), true);
+  assert.equal(isDefaultPantryIngredient("洋葱"), false);
+  assert.equal(isDefaultPantryIngredient("蒜苗"), false);
   assert.equal(isSpecialtySeasoning("蚝油"), true);
   assert.equal(isSpecialtySeasoning("土豆"), false);
+});
+
+test("natural-language chicken wing ingredients remain retrievable", () => {
+  const query = input({ ingredients: "猪肉、土豆、鸡翅", planScope: "meal", dishCount: 2 });
+  const chickenWing = rankPantryRecipes(getTrustedRecipes(query), query).find((match) => match.recipe.name === "红烧鸡翅");
+  assert.ok(chickenWing);
+  assert.equal(chickenWing.cookable, true);
+  assert.ok(chickenWing.availableUsed.includes("鸡翅"));
 });
 
 test("seasonings explicitly marked unavailable exclude dependent recipes", () => {

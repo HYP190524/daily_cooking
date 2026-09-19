@@ -24,10 +24,11 @@ function role(recipe: Recipe) {
 function coherentSet(recipes: Recipe[]) {
   const roles = recipes.map(role);
   if (new Set(recipes.map((recipe) => recipe.name)).size !== recipes.length) return false;
-  if (roles.filter((item) => item === "main").length > Math.max(1, Math.ceil(recipes.length / 2))) return false;
   if (roles.filter((item) => item === "staple").length > 1) return false;
-  if (recipes.length > 1 && new Set(roles).size === 1) return false;
-  return recipes.length === 1 || new Set(recipes.map((recipe) => recipe.technique)).size > 1;
+  // A real meal can contain two mains (for example braised pork plus chicken
+  // wings), and two dishes may share a technique. Diversity is a ranking
+  // preference, never a closure blocker.
+  return true;
 }
 
 function combinations<T>(items: T[], count: number, start = 0, prefix: T[] = [], output: T[][] = []) {

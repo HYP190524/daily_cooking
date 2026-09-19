@@ -28,8 +28,8 @@ function parseInput(value: unknown): PlanInput | null {
     unavailableSeasonings: text(data.unavailableSeasonings, 160),
     planScope: data.planScope === "meal" ? "meal" : "single",
     dishCount: data.planScope === "meal"
-      ? 1
-      : typeof data.dishCount === "number" ? Math.min(4, Math.max(2, Math.round(data.dishCount))) : 2,
+      ? typeof data.dishCount === "number" ? Math.min(4, Math.max(2, Math.round(data.dishCount))) : 2
+      : 1,
     taste: text(data.taste, 80),
     allergens: text(data.allergens, 120),
     servings: typeof data.servings === "number" ? Math.min(8, Math.max(1, Math.round(data.servings))) : 2,
