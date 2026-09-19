@@ -34,7 +34,7 @@ import type { PersistedSession, PlanInput, PlanOption, PlanResponse, RunStatus, 
 
 gsap.registerPlugin(useGSAP);
 
-const STORAGE_KEY = "kaifan-harness-demo-v4";
+const STORAGE_KEY = "kaifan-harness-demo-v5";
 
 const defaultInput: PlanInput = {
   mode: "ingredients",
@@ -98,7 +98,7 @@ function safeReadSession(): PersistedSession | null {
     const value = localStorage.getItem(STORAGE_KEY);
     if (!value) return null;
     const session = JSON.parse(value) as PersistedSession;
-    return session.version === 4 ? session : null;
+    return session.version === 5 ? session : null;
   } catch {
     return null;
   }
@@ -152,7 +152,9 @@ export default function Home() {
       setPlans(saved.plans);
       setSelectedPlanId(saved.selectedPlanId);
       setActivePlan(saved.activePlan);
-      setTraces(saved.traces);
+      // An idle session can only be an interrupted/failed run. Do not restore
+      // its old timeline beside an empty workbench after a refresh.
+      setTraces(saved.status === "idle" && saved.plans.length === 0 && !saved.activePlan ? [] : saved.traces);
       if (saved.status === "planning") setNotice("上次检索被中断，已安全恢复到可重试状态。");
     }
     setHydrated(true);
@@ -160,7 +162,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const session: PersistedSession = { version: 4, input, status, plans, selectedPlanId, activePlan, traces };
+    const session: PersistedSession = { version: 5, input, status, plans, selectedPlanId, activePlan, traces };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   }, [hydrated, input, status, plans, selectedPlanId, activePlan, traces]);
 

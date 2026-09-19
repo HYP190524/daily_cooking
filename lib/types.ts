@@ -119,7 +119,7 @@ export interface PlanResponse {
 }
 
 export interface PersistedSession {
-  version: 4;
+  version: 5;
   input: PlanInput;
   status: RunStatus;
   plans: PlanOption[];
