@@ -57,7 +57,9 @@ export function checkNoPurchase(plan: PlanOption, input: PlanInput) {
   if (input.mode === "dish") {
     return result("check_no_purchase", true, "菜名查询模式展示原始配方，不启用库存闭包。", "hard");
   }
+  const generated = plan.recipes.some((recipe) => recipe.source.kind === "deepseek");
   const completeInventory = plan.coverage.missing.length === 0 && plan.coverage.blockedSeasonings.length === 0 && plan.coverage.unused.length === 0;
+  const hardFailure = plan.coverage.missing.length > 0 || plan.coverage.blockedSeasonings.length > 0 || (generated && plan.coverage.unused.length > 0);
   return result(
     "check_no_purchase",
     completeInventory,
@@ -68,7 +70,7 @@ export function checkNoPurchase(plan: PlanOption, input: PlanInput) {
       : plan.coverage.unused.length
       ? `方案没有用到全部现有食材：${plan.coverage.unused.join("、")}。单菜模式必须覆盖全部食材，多菜模式可拆分但仍需合计覆盖。`
       : "现有主要食材已全部纳入方案，无需新增购买。",
-    "hard",
+    hardFailure ? "hard" : "soft",
   );
 }
 

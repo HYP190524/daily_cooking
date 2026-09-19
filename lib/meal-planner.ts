@@ -87,8 +87,11 @@ export function createPlanFromRecipes(recipes: Recipe[], input: PlanInput, baseS
   const { activeMinutes, totalMinutes } = estimatePlanTime(recipes);
   const fitsTime = totalMinutes <= input.maxMinutes;
   const title = recipes.map((recipe) => recipe.name).join(" + ");
+  const partialInventory = input.mode === "ingredients" && coverage.unused.length > 0;
   const description = input.mode === "dish"
     ? "完整保留可信来源中的菜名、配方与操作顺序，不使用生成模板改写。"
+    : partialInventory
+    ? "没有找到一条菜谱覆盖全部库存，以下展示最接近的真实做法；未覆盖食材已明确列出。"
     : recipes.length > 1
     ? `由 ${recipes.length} 道真实菜谱组成，分别烹饪，不把无关食材强行混成一道菜。`
     : "完整保留真实菜名、配方与操作顺序，不使用生成式模板造菜。";
@@ -103,9 +106,11 @@ export function createPlanFromRecipes(recipes: Recipe[], input: PlanInput, baseS
     servings: input.servings,
     tags: input.mode === "dish"
       ? ["真实菜谱", "可信来源", "原始做法"]
-      : ["真实菜谱", "零新增主食材", recipes.length > 1 ? "分开烹饪" : "单菜方案"],
+      : ["真实菜谱", "零新增主食材", partialInventory ? "最接近方案" : recipes.length > 1 ? "分开烹饪" : "单菜方案"],
     rationale: input.mode === "dish"
       ? `保留“${title}”的真实技法与耗时；时间预算只触发提示，不会篡改做法。`
+      : partialInventory
+      ? `本次使用 ${coverage.used.length} 种主要食材；还剩 ${coverage.unused.join("、")}，建议切换多道菜。`
       : `本次方案覆盖 ${coverage.used.length} 种主要食材；默认调料按家庭常备处理。`,
     coverage,
     fitsTime,
@@ -129,6 +134,33 @@ export function buildIngredientPlans(matches: RecipeMatch[], input: PlanInput, l
     .sort((left, right) => {
       if (left.fitsTime !== right.fitsTime) return left.fitsTime ? -1 : 1;
       if (left.coverage.used.length !== right.coverage.used.length) return right.coverage.used.length - left.coverage.used.length;
+      return right.score - left.score;
+    })
+    .filter((plan, index, all) => all.findIndex((candidate) => candidate.title === plan.title) === index)
+    .slice(0, limit);
+}
+
+/**
+ * Returns honest nearest matches when a strict full-inventory plan is impossible.
+ * The normal planner remains fail-closed; this path exists so the UI can
+ * explain the trade-off instead of stopping with an empty workbench.
+ */
+export function buildClosestIngredientPlans(matches: RecipeMatch[], input: PlanInput, limit = 4) {
+  const cookable = matches.filter((match) => match.cookable).slice(0, 12);
+  const variants: PlanOption[] = input.planScope === "single"
+    ? cookable.map((match) => createPlanFromRecipes([match.recipe], input, match.score))
+    : combinations(cookable, input.dishCount)
+      .filter((set) => coherentSet(set.map((match) => match.recipe)))
+      .map((set) => createPlanFromRecipes(set.map((match) => match.recipe), input, set.reduce((sum, match) => sum + match.score, 0)));
+
+  return variants
+    .filter((plan) => plan.coverage.missing.length === 0 && plan.coverage.blockedSeasonings.length === 0)
+    .sort((left, right) => {
+      if (left.coverage.used.length !== right.coverage.used.length) return right.coverage.used.length - left.coverage.used.length;
+      const leftProtein = left.coverage.used.filter((item) => /鸡|鸭|鹅|猪|牛|羊|鱼|虾|蟹|贝|肉|排骨|蛋|豆腐/.test(item)).length;
+      const rightProtein = right.coverage.used.filter((item) => /鸡|鸭|鹅|猪|牛|羊|鱼|虾|蟹|贝|肉|排骨|蛋|豆腐/.test(item)).length;
+      if (leftProtein !== rightProtein) return rightProtein - leftProtein;
+      if (left.fitsTime !== right.fitsTime) return left.fitsTime ? -1 : 1;
       return right.score - left.score;
     })
     .filter((plan, index, all) => all.findIndex((candidate) => candidate.title === plan.title) === index)

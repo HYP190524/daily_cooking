@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { generateDeepSeekPlans, selectDiversePlans } from "@/lib/deepseek-planner";
 import { hasHardFailure, runPlanGuardrails } from "@/lib/guardrails";
 import { splitIngredientInput } from "@/lib/ingredient-normalizer";
-import { buildDishPlans, buildIngredientPlans } from "@/lib/meal-planner";
+import { buildClosestIngredientPlans, buildDishPlans, buildIngredientPlans } from "@/lib/meal-planner";
 import { rankPantryRecipes, summarizeNearest } from "@/lib/pantry-ranker";
 import { getTrustedRecipes, searchDishRecipes, trustedRecipeCount } from "@/lib/recipe-repository";
 import { trace } from "@/lib/trace";
@@ -60,6 +60,7 @@ export async function POST(request: Request) {
   let candidateCount = 0;
   let cookableCount = 0;
   let matchedNames: string[] = [];
+  let partialInventoryFallback = false;
 
   if (input.mode === "dish") {
     const recipes = searchDishRecipes(input, 4);
@@ -118,6 +119,10 @@ export async function POST(request: Request) {
       cookableCount = cookable.length;
       matchedNames = matches.slice(0, 8).map((match) => match.recipe.name);
       plans = selectDiversePlans(buildIngredientPlans(matches, input, 8), 2);
+      if (!plans.length && cookable.length) {
+        plans = selectDiversePlans(buildClosestIngredientPlans(matches, input, 8), 2);
+        partialInventoryFallback = plans.some((plan) => plan.coverage.unused.length > 0);
+      }
       traces.push(
         trace(
           "tool",
@@ -136,7 +141,11 @@ export async function POST(request: Request) {
         trace(
           "planner",
           "meal-set-planner · 一餐组合",
-          plans.length ? `组合出 ${plans.length} 套可信方案，不强迫一顿用完全部库存。` : "没有形成满足主要食材闭包的真实一餐。",
+          plans.length
+            ? partialInventoryFallback
+              ? `没有找到完整覆盖全部库存的方案，展示 ${plans.length} 套最接近真实菜谱，并标出未覆盖食材。`
+              : `组合出 ${plans.length} 套覆盖全部主要食材的可信方案。`
+            : "没有形成满足主要食材闭包的真实一餐。",
           plans.length ? "success" : "warning",
           11,
         ),
@@ -144,11 +153,11 @@ export async function POST(request: Request) {
 
       if (!plans.length) {
         const nearest = summarizeNearest(matches);
-        traces.push(trace("state", "停止执行", "没有候选能在主要食材零新增条件下闭环，系统拒绝展示违规方案。", "warning"));
+        traces.push(trace("state", "停止执行", "没有找到任何不缺主要食材的可信菜谱，系统拒绝展示无法执行的方案。", "warning"));
         return NextResponse.json(
           {
             error: nearest.length
-              ? `暂时没有无需新增主要食材的可执行方案。最接近的是：${nearest.join("；")}。`
+              ? `暂时没有可执行的完整方案。最接近的是：${nearest.join("；")}。`
               : "暂时没有找到使用这些食材的可执行方案，请尝试更常见的食材名称。",
             traces,
           },
@@ -174,7 +183,9 @@ export async function POST(request: Request) {
       "guardrail",
       "plan-guardrails · 确定性复核",
       accepted.length === plans.length
-        ? "来源、过敏原、主要食材闭包和一餐结构硬约束全部通过。"
+        ? partialInventoryFallback
+          ? "来源、过敏原和一餐结构通过；未覆盖库存作为软提示展示。"
+          : "来源、过敏原、主要食材闭包和一餐结构硬约束全部通过。"
         : `${plans.length - accepted.length} 套方案被硬约束拦截。`,
       accepted.length === plans.length ? "success" : "warning",
       9,
@@ -200,6 +211,8 @@ export async function POST(request: Request) {
     },
     notice: input.mode === "dish"
       ? "只返回有本地来源的完整菜谱；不会为了时间限制改写成快手模板。"
+      : partialInventoryFallback
+      ? "没有找到一条真实菜谱覆盖全部库存，已展示最接近的方案；未覆盖食材会明确列出，建议切换多道菜。"
       : responseMode === "deepseek"
       ? "DeepSeek 已按结构化约束规划，结果又经过本地 Guardrail 复核；特殊调料会单独提示。"
       : "DeepSeek 当前未启用或不可用，已使用本地可信菜谱兜底；主要食材仍坚持零新增。",

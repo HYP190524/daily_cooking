@@ -31,6 +31,15 @@ test("DeepSeek structured envelope accepts complete plans", () => {
   assert.equal(parsed.plans[0].recipes[0].name, "青椒炒鸡蛋");
 });
 
+test("DeepSeek structured envelope accepts one plan for single-dish mode", () => {
+  const parsed = parseDeepSeekEnvelope({
+    plans: [
+      { title: "单菜方案", description: "一锅完成的家常菜。", rationale: "覆盖本次库存并控制时间。", recipes: [{ ...recipe, name: "番茄牛肉" }] },
+    ],
+  }, 1);
+  assert.equal(parsed.plans.length, 1);
+});
+
 function fakePlan(id: string, names: string[]): PlanOption {
   return {
     id,

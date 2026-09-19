@@ -2863,6 +2863,7 @@ select {
 .seasoning-warning svg { flex: 0 0 auto; }
 
 .inventory-proof-ok { color: #24643c; }
+.inventory-proof-warning { color: #8a4a18; }
 
 @media (max-width: 420px) {
   .scope-switch { grid-template-columns: 1fr; }

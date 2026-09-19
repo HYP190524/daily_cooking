@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { goldRecipes } from "../data/gold-recipes";
 import { ingredientMatches, normalizeIngredient } from "../lib/ingredient-normalizer";
-import { buildIngredientPlans } from "../lib/meal-planner";
+import { buildClosestIngredientPlans, buildIngredientPlans } from "../lib/meal-planner";
 import { rankPantryRecipes } from "../lib/pantry-ranker";
 import { isDefaultPantryIngredient, isSpecialtySeasoning } from "../lib/pantry-presets";
 import { getTechniqueCoverage, getTrustedRecipes, searchDishRecipes } from "../lib/recipe-repository";
@@ -100,6 +100,17 @@ test("single-dish mode cannot silently drop a required inventory item", () => {
   const beefQuery = input({ ingredients: "牛肉、土豆、胡萝卜", planScope: "single", dishCount: 1 });
   const beefPlans = buildIngredientPlans(rankPantryRecipes(getTrustedRecipes(beefQuery), beefQuery), beefQuery, 2);
   assert.ok(beefPlans.every((plan) => plan.coverage.used.includes("牛肉")));
+});
+
+test("nearest fallback keeps a real recipe visible when one dish cannot cover all ingredients", () => {
+  const query = input({ ingredients: "牛肉、土豆、番茄", planScope: "single", dishCount: 1 });
+  const matches = rankPantryRecipes(getTrustedRecipes(query), query);
+  const strictPlans = buildIngredientPlans(matches, query, 2);
+  const nearestPlans = buildClosestIngredientPlans(matches, query, 2);
+  assert.equal(strictPlans.length, 0);
+  assert.ok(nearestPlans.length > 0);
+  assert.ok(nearestPlans.some((plan) => plan.coverage.used.length > 0));
+  assert.ok(nearestPlans.some((plan) => plan.coverage.unused.length > 0));
 });
 
 test("unknown inventory returns no false grounded match", () => {

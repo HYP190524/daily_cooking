@@ -97,6 +97,14 @@ test("missing groceries and ungrounded sources are hard failures", () => {
   assert.equal(checkSourceGrounding(ungrounded).passed, false);
 });
 
+test("local nearest fallback discloses leftover inventory as a soft warning", () => {
+  const plan = trustedPlan();
+  const partial = { ...plan, coverage: { ...plan.coverage, unused: ["番茄"] } };
+  const check = checkNoPurchase(partial, input);
+  assert.equal(check.passed, false);
+  assert.equal(check.severity, "soft");
+});
+
 test("specialty seasonings are disclosed softly while explicit exclusions fail closed", () => {
   const plan = trustedPlan();
   const specialty = {
