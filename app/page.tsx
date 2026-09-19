@@ -34,16 +34,15 @@ import type { PersistedSession, PlanInput, PlanOption, PlanResponse, RunStatus, 
 
 gsap.registerPlugin(useGSAP);
 
-const STORAGE_KEY = "kaifan-harness-demo-v2";
+const STORAGE_KEY = "kaifan-harness-demo-v4";
 
 const defaultInput: PlanInput = {
   mode: "ingredients",
   dishName: "丝瓜鸡蛋汤",
-  ingredients: "鸡腿、土豆、青菜、米饭",
-  priorityIngredients: "鸡腿、青菜",
+  ingredients: "鸡腿、土豆",
   unavailableSeasonings: "",
-  planScope: "meal",
-  dishCount: 2,
+  planScope: "single",
+  dishCount: 1,
   taste: "少油、咸鲜、不辣",
   allergens: "花生",
   servings: 2,
@@ -99,7 +98,7 @@ function safeReadSession(): PersistedSession | null {
     const value = localStorage.getItem(STORAGE_KEY);
     if (!value) return null;
     const session = JSON.parse(value) as PersistedSession;
-    return session.version === 3 ? session : null;
+    return session.version === 4 ? session : null;
   } catch {
     return null;
   }
@@ -161,7 +160,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const session: PersistedSession = { version: 3, input, status, plans, selectedPlanId, activePlan, traces };
+    const session: PersistedSession = { version: 4, input, status, plans, selectedPlanId, activePlan, traces };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   }, [hydrated, input, status, plans, selectedPlanId, activePlan, traces]);
 
@@ -265,7 +264,7 @@ export default function Home() {
             <span className="hero-line"><span className="hero-word">让</span><span className="hero-word">今晚的食材</span></span>
             <span className="hero-line"><span className="hero-word">变成</span><span className="inline-food-swatch" aria-hidden="true" /><span className="hero-word accent-word">一顿好饭</span></span>
           </h1>
-          <p>不再把全部库存硬塞进一道怪菜。Agent 只检索真实菜谱，组合成一餐，并在主要食材零采购校验后等你确认。</p>
+          <p>默认尝试用一道真实菜解决全部库存；食材较多时切换多道菜分开消耗，Agent 会在零新增校验后等你确认。</p>
           <a className="hero-cta" href="#agent-workbench"><Play size={18} fill="currentColor" />看看今晚吃什么</a>
         </div>
         <div className="hero-collage" aria-label="鲜亮的家常菜食材拼贴">
@@ -316,33 +315,31 @@ export default function Home() {
               <label className="field mode-field"><span>想做哪道菜？</span><input value={input.dishName} onChange={(event) => setInput((current) => ({ ...current, dishName: event.target.value }))} placeholder="例如：佛跳墙、丝瓜鸡蛋汤" disabled={isBusy} /><small>只返回本地可信完整菜谱；复杂菜不会被强行压成快手菜。</small></label>
             ) : (
               <div className="ingredient-mode-fields mode-field">
-                <label className="field"><span>冰箱里有这些</span><textarea value={input.ingredients} onChange={(event) => setInput((current) => ({ ...current, ingredients: event.target.value }))} placeholder="例如：鸡腿、土豆、青菜、米饭" rows={4} disabled={isBusy} /><small>这是可用库存，不要求一顿全部用完。</small></label>
-                <label className="field priority-field"><span>优先消耗（可选）</span><input value={input.priorityIngredients} onChange={(event) => setInput((current) => ({ ...current, priorityIngredients: event.target.value }))} placeholder="例如：鸡腿、青菜" disabled={isBusy} /><small>排序会优先覆盖，但不会为凑覆盖率发明怪菜。</small></label>
+                <label className="field"><span>冰箱里有这些</span><textarea value={input.ingredients} onChange={(event) => setInput((current) => ({ ...current, ingredients: event.target.value }))} placeholder="例如：鸡腿、土豆、青菜、米饭" rows={4} disabled={isBusy} /><small>把想解决的主要食材都写上；默认会尝试一锅解决全部库存。</small></label>
                 <fieldset className="inventory-rules">
-                  <legend>今晚怎么吃</legend>
+                  <legend>今晚做几道菜？</legend>
                   <div className="scope-switch" role="radiogroup" aria-label="规划方式">
-                    <button type="button" role="radio" aria-checked={input.planScope === "single"} className={input.planScope === "single" ? "active" : ""} onClick={() => setInput((current) => ({ ...current, planScope: "single", dishCount: 1 }))} disabled={isBusy}>只推荐一道菜</button>
-                    <button type="button" role="radio" aria-checked={input.planScope === "meal"} className={input.planScope === "meal" ? "active" : ""} onClick={() => setInput((current) => ({ ...current, planScope: "meal", dishCount: Math.max(2, current.dishCount) }))} disabled={isBusy}>搭配一顿饭</button>
+                    <button type="button" role="radio" aria-checked={input.planScope === "single"} className={input.planScope === "single" ? "active" : ""} onClick={() => setInput((current) => ({ ...current, planScope: "single", dishCount: 1 }))} disabled={isBusy}>一道菜 · 全部食材</button>
+                    <button type="button" role="radio" aria-checked={input.planScope === "meal"} className={input.planScope === "meal" ? "active" : ""} onClick={() => setInput((current) => ({ ...current, planScope: "meal", dishCount: Math.max(2, current.dishCount) }))} disabled={isBusy}>多道菜 · 分开消耗</button>
                   </div>
-                  {input.planScope === "meal" && <label className="field dish-count-field"><span>这顿想做几道菜？</span><select value={input.dishCount} onChange={(event) => setInput((current) => ({ ...current, dishCount: Number(event.target.value) }))} disabled={isBusy}>{[2, 3, 4].map((value) => <option key={value} value={value}>{value} 道菜</option>)}</select><small>Agent 会严格按数量规划，两个候选不会重复同一道菜。</small></label>}
-                  <details className="seasoning-settings">
-                    <summary>
-                      <span className="seasoning-summary-icon" aria-hidden="true"><Settings2 size={16} /></span>
-                      <span><strong>调料设置（可选）</strong><small>默认家里有常见油盐酱醋</small></span>
-                      <ChevronDown className="seasoning-chevron" size={17} aria-hidden="true" />
-                    </summary>
-                    <div className="seasoning-settings-body">
-                      <p>默认包括水、食用油、盐、糖、生抽、老抽、醋、料酒、淀粉和葱姜蒜。特殊调料会在方案中提醒，不会悄悄当成已有。</p>
-                      <label className="field"><span>家里没有这些调料</span><input value={input.unavailableSeasonings} onChange={(event) => setInput((current) => ({ ...current, unavailableSeasonings: event.target.value }))} placeholder="例如：料酒、醋（可不填）" disabled={isBusy} /><small>只有明确写在这里的调料会被排除。</small></label>
-                    </div>
-                  </details>
-                  <div className="zero-purchase-lock" role="status"><LockKeyhole size={16} /><span><strong>主要食材硬约束</strong> 缺少肉、蛋、蔬菜等必需食材的菜谱不会进入候选。</span></div>
+                  {input.planScope === "meal" && <label className="field dish-count-field"><span>这顿想做几道菜？</span><select value={input.dishCount} onChange={(event) => setInput((current) => ({ ...current, dishCount: Number(event.target.value) }))} disabled={isBusy}>{[2, 3, 4].map((value) => <option key={value} value={value}>{value} 道菜</option>)}</select><small>多道菜会合计覆盖你填写的主要食材，不会重复同一道菜。</small></label>}
+                  <div className="zero-purchase-lock" role="status"><LockKeyhole size={16} /><span><strong>库存闭环</strong> 单菜默认覆盖全部食材；多菜模式会把食材拆到不同真实菜谱中。</span></div>
                 </fieldset>
               </div>
             )}
 
-            <label className="field"><span>口味偏好</span><input value={input.taste} onChange={(event) => setInput((current) => ({ ...current, taste: event.target.value }))} placeholder="少油、清淡、不辣" disabled={isBusy} /></label>
-            <label className="field"><span>过敏原 / 绝对禁忌</span><input value={input.allergens} onChange={(event) => setInput((current) => ({ ...current, allergens: event.target.value }))} placeholder="例如：花生、牛奶" disabled={isBusy} /><small>这是硬约束，会经过确定性工具二次检查。</small></label>
+            <details className="seasoning-settings">
+              <summary>
+                <span className="seasoning-summary-icon" aria-hidden="true"><Settings2 size={16} /></span>
+                <span><strong>其他要求（可选）</strong><small>口味、过敏原和调料例外</small></span>
+                <ChevronDown className="seasoning-chevron" size={17} aria-hidden="true" />
+              </summary>
+              <div className="seasoning-settings-body">
+                <label className="field"><span>口味偏好</span><input value={input.taste} onChange={(event) => setInput((current) => ({ ...current, taste: event.target.value }))} placeholder="例如：少油、清淡、不辣" disabled={isBusy} /></label>
+                <label className="field"><span>过敏原 / 绝对禁忌</span><input value={input.allergens} onChange={(event) => setInput((current) => ({ ...current, allergens: event.target.value }))} placeholder="例如：花生、牛奶" disabled={isBusy} /><small>这是硬约束，会经过确定性工具二次检查。</small></label>
+                <label className="field"><span>家里没有这些调料</span><input value={input.unavailableSeasonings} onChange={(event) => setInput((current) => ({ ...current, unavailableSeasonings: event.target.value }))} placeholder="例如：蚝油、豆瓣酱（可不填）" disabled={isBusy} /><small>油、盐、糖、生抽等基础调料默认家里有。</small></label>
+              </div>
+            </details>
             <div className="field-row">
               <label className="field"><span>人数</span><select value={input.servings} onChange={(event) => setInput((current) => ({ ...current, servings: Number(event.target.value) }))} disabled={isBusy}>{[1, 2, 3, 4, 5, 6].map((value) => <option key={value} value={value}>{value} 人</option>)}</select></label>
               <label className="field"><span>时间预算</span><select value={input.maxMinutes} onChange={(event) => setInput((current) => ({ ...current, maxMinutes: Number(event.target.value) }))} disabled={isBusy}>{[20, 30, 45, 60, 90, 120, 240].map((value) => <option key={value} value={value}>{value} 分钟</option>)}</select></label>
@@ -369,7 +366,6 @@ export default function Home() {
               <div className="recipe-grid">
                 {plans.map((plan, index) => {
                   const selected = selectedPlanId === plan.id;
-                  const priorityTotal = plan.coverage.priorityUsed.length + plan.coverage.priorityUnused.length;
                   return (
                     <button className={`recipe-card ${selected ? "selected" : ""}`} key={plan.id} type="button" onClick={() => setSelectedPlanId(plan.id)} aria-pressed={selected}>
                       <div className="recipe-card-top"><span className="option-label">方案 {String.fromCharCode(65 + index)}</span><span className={`select-indicator ${selected ? "selected" : ""}`}>{selected ? <Check size={14} /> : null}</span></div>
@@ -377,7 +373,7 @@ export default function Home() {
                       {!plan.fitsTime && <div className="feasibility-warning"><AlertTriangle size={15} />{plan.timeMessage}</div>}
                       <div className="recipe-metrics"><span><Clock3 size={15} />约 {plan.totalMinutes} 分钟</span><span><Utensils size={15} />{plan.servings} 人份</span></div>
                       <div className="plan-recipe-list">{plan.recipes.map((recipe) => <div key={recipe.id}><strong>{recipe.name}</strong><span>{recipe.technique} · {recipe.source.kind === "gold" ? "手工校验" : recipe.source.kind === "deepseek" ? "DeepSeek 生成" : "HowToCook"}</span></div>)}</div>
-                      {input.mode === "ingredients" ? <><div className="inventory-proof" aria-label="库存适配结果"><span className="inventory-proof-ok"><CheckCircle2 size={14} />优先食材 {plan.coverage.priorityUsed.length}/{priorityTotal}</span><span className="inventory-proof-ok">本次使用 {plan.coverage.used.length} 种</span><span className="inventory-proof-ok">新增主食材 0</span><small>默认调料：{plan.coverage.pantryUsed.join("、") || "无"}</small>{plan.coverage.specialtySeasonings.length > 0 && <small className="seasoning-warning"><AlertTriangle size={13} />可能需要特殊调料：{plan.coverage.specialtySeasonings.join("、")}</small>}</div>{plan.coverage.unused.length > 0 && <div className="unused-note">留到下一顿：{plan.coverage.unused.join("、")}</div>}</> : <div className="source-note">来源：{plan.recipes[0].source.title} · {plan.recipes[0].source.license}</div>}
+                      {input.mode === "ingredients" ? <><div className="inventory-proof" aria-label="库存适配结果"><span className="inventory-proof-ok"><CheckCircle2 size={14} />主要食材 {plan.coverage.used.length} 种全部覆盖</span><span className="inventory-proof-ok">新增主食材 0</span><small>默认调料：{plan.coverage.pantryUsed.join("、") || "无"}</small>{plan.coverage.specialtySeasonings.length > 0 && <small className="seasoning-warning"><AlertTriangle size={13} />可能需要特殊调料：{plan.coverage.specialtySeasonings.join("、")}</small>}</div>{plan.coverage.unused.length > 0 && <div className="unused-note">未覆盖食材：{plan.coverage.unused.join("、")}</div>}</> : <div className="source-note">来源：{plan.recipes[0].source.title} · {plan.recipes[0].source.license}</div>}
                       <div className="tag-row">{plan.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
                       <div className="rationale"><Sparkles size={14} /><span>{plan.rationale}</span></div>
                     </button>

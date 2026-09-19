@@ -55,7 +55,6 @@ export interface PlanInput {
   mode: PlanMode;
   dishName: string;
   ingredients: string;
-  priorityIngredients: string;
   unavailableSeasonings: string;
   planScope: PlanScope;
   dishCount: number;
@@ -68,8 +67,6 @@ export interface PlanInput {
 export interface PantryCoverage {
   used: string[];
   unused: string[];
-  priorityUsed: string[];
-  priorityUnused: string[];
   pantryUsed: string[];
   specialtySeasonings: string[];
   blockedSeasonings: string[];
@@ -100,7 +97,6 @@ export interface GuardrailResult {
     | "check_no_purchase"
     | "check_seasoning_assumptions"
     | "check_time_budget"
-    | "check_priority_coverage"
     | "check_meal_coherence";
   passed: boolean;
   detail: string;
@@ -123,7 +119,7 @@ export interface PlanResponse {
 }
 
 export interface PersistedSession {
-  version: 3;
+  version: 4;
   input: PlanInput;
   status: RunStatus;
   plans: PlanOption[];

@@ -1,4 +1,4 @@
-import { ingredientMatches, splitIngredientInput } from "./ingredient-normalizer";
+import { splitIngredientInput } from "./ingredient-normalizer";
 import type { GuardrailResult, PlanInput, PlanOption } from "./types";
 
 const allergenAliases: Record<string, string[]> = {
@@ -57,14 +57,17 @@ export function checkNoPurchase(plan: PlanOption, input: PlanInput) {
   if (input.mode === "dish") {
     return result("check_no_purchase", true, "菜名查询模式展示原始配方，不启用库存闭包。", "hard");
   }
+  const completeInventory = plan.coverage.missing.length === 0 && plan.coverage.blockedSeasonings.length === 0 && plan.coverage.unused.length === 0;
   return result(
     "check_no_purchase",
-    plan.coverage.missing.length === 0 && plan.coverage.blockedSeasonings.length === 0,
+    completeInventory,
     plan.coverage.blockedSeasonings.length
       ? `方案使用了你明确标记为没有的调料：${plan.coverage.blockedSeasonings.join("、")}。`
       : plan.coverage.missing.length
       ? `仍缺少主要食材：${plan.coverage.missing.join("、")}。`
-      : "主要食材闭包通过：无需新增购买主要食材。",
+      : plan.coverage.unused.length
+      ? `方案没有用到全部现有食材：${plan.coverage.unused.join("、")}。单菜模式必须覆盖全部食材，多菜模式可拆分但仍需合计覆盖。`
+      : "现有主要食材已全部纳入方案，无需新增购买。",
     "hard",
   );
 }
@@ -93,20 +96,6 @@ export function checkTimeBudget(plan: PlanOption, maxMinutes: number) {
   );
 }
 
-export function checkPriorityCoverage(plan: PlanOption, input: PlanInput) {
-  const priority = splitIngredientInput(input.priorityIngredients);
-  if (!priority.length) return result("check_priority_coverage", true, "未设置优先消耗食材。", "soft");
-  const uncovered = priority.filter((item) => !plan.coverage.priorityUsed.some((used) => ingredientMatches(item, used)));
-  return result(
-    "check_priority_coverage",
-    uncovered.length === 0,
-    uncovered.length
-      ? `这顿暂不使用：${uncovered.join("、")}；它们不会被强行拼进不真实的菜。`
-      : `已覆盖全部 ${priority.length} 种优先消耗食材。`,
-    "soft",
-  );
-}
-
 export function checkMealCoherence(plan: PlanOption, input?: PlanInput) {
   const names = plan.recipes.map((recipe) => recipe.name);
   const expectedCount = input
@@ -128,7 +117,6 @@ export function runPlanGuardrails(plan: PlanOption, input: PlanInput) {
     checkNoPurchase(plan, input),
     checkSeasoningAssumptions(plan),
     checkTimeBudget(plan, input.maxMinutes),
-    checkPriorityCoverage(plan, input),
     checkMealCoherence(plan, input),
   ];
 }

@@ -2876,13 +2876,6 @@ select {
 }
 
 /* Trusted pantry planner: meal evidence and single completion */
-.priority-field {
-  padding: 12px;
-  background: #fff3b7;
-  border: 1px dashed var(--color-foreground);
-  border-radius: 12px;
-}
-
 .plan-recipe-list {
   margin-top: 12px;
   display: grid;

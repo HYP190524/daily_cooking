@@ -25,10 +25,9 @@ function parseInput(value: unknown): PlanInput | null {
     mode,
     dishName,
     ingredients,
-    priorityIngredients: text(data.priorityIngredients, 160),
     unavailableSeasonings: text(data.unavailableSeasonings, 160),
-    planScope: data.planScope === "single" ? "single" : "meal",
-    dishCount: data.planScope === "single"
+    planScope: data.planScope === "meal" ? "meal" : "single",
+    dishCount: data.planScope === "meal"
       ? 1
       : typeof data.dishCount === "number" ? Math.min(4, Math.max(2, Math.round(data.dishCount))) : 2,
     taste: text(data.taste, 80),
@@ -50,7 +49,7 @@ export async function POST(request: Request) {
       "ingredient-normalizer · 食材归一化",
       input.mode === "dish"
         ? `规范化菜名“${input.dishName}”。`
-        : `识别 ${splitIngredientInput(input.ingredients).length} 种现有食材与 ${splitIngredientInput(input.priorityIngredients).length} 种优先食材。`,
+        : `识别 ${splitIngredientInput(input.ingredients).length} 种现有主要食材，默认尝试全部覆盖。`,
       "success",
       8,
     ),

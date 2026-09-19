@@ -60,7 +60,7 @@ function fakePlan(id: string, names: string[]): PlanOption {
     servings: 2,
     tags: [],
     rationale: "测试",
-    coverage: { used: [], unused: [], priorityUsed: [], priorityUnused: [], pantryUsed: [], specialtySeasonings: [], blockedSeasonings: [], missing: [], ratio: 1 },
+    coverage: { used: [], unused: [], pantryUsed: [], specialtySeasonings: [], blockedSeasonings: [], missing: [], ratio: 1 },
     fitsTime: true,
     timeMessage: "符合预算",
     score: 100 - Number(id),

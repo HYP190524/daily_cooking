@@ -49,13 +49,13 @@ function estimatePlanTime(recipes: Recipe[]) {
 
 function buildCoverage(recipes: Recipe[], input: PlanInput): PantryCoverage {
   const available = splitIngredientInput(input.ingredients);
-  const priority = splitIngredientInput(input.priorityIngredients);
   const unavailableSeasonings = splitIngredientInput(input.unavailableSeasonings);
   const required = unique(recipes.flatMap((recipe) =>
     extractRecipeRequirements(recipe.ingredients).filter((item) => !item.optional).map((item) => item.name),
   ));
-  const used = available.filter((item) => required.some((requirement) => ingredientMatches(requirement, item)));
-  const priorityUsed = priority.filter((item) => required.some((requirement) => ingredientMatches(requirement, item)));
+  const used = available.filter((item) =>
+    seasoningKind(item, unavailableSeasonings) === null && required.some((requirement) => ingredientMatches(requirement, item)),
+  );
   const pantryUsed = DEFAULT_PANTRY.filter((item) =>
     required.some((requirement) => seasoningKind(requirement, unavailableSeasonings) === "default" && ingredientMatches(requirement, item)),
   );
@@ -71,14 +71,14 @@ function buildCoverage(recipes: Recipe[], input: PlanInput): PantryCoverage {
   );
   return {
     used: unique(used),
-    unused: available.filter((item) => !used.includes(item)),
-    priorityUsed: unique(priorityUsed),
-    priorityUnused: priority.filter((item) => !priorityUsed.includes(item)),
+    unused: available.filter((item) => seasoningKind(item, unavailableSeasonings) === null && !used.includes(item)),
     pantryUsed: unique(pantryUsed),
     specialtySeasonings: unique(specialtySeasonings),
     blockedSeasonings: unique(blockedSeasonings),
     missing: unique(missing),
-    ratio: available.length ? used.length / available.length : 1,
+    ratio: available.filter((item) => seasoningKind(item, unavailableSeasonings) === null).length
+      ? used.length / available.filter((item) => seasoningKind(item, unavailableSeasonings) === null).length
+      : 1,
   };
 }
 
@@ -87,13 +87,12 @@ export function createPlanFromRecipes(recipes: Recipe[], input: PlanInput, baseS
   const { activeMinutes, totalMinutes } = estimatePlanTime(recipes);
   const fitsTime = totalMinutes <= input.maxMinutes;
   const title = recipes.map((recipe) => recipe.name).join(" + ");
-  const priorityTotal = coverage.priorityUsed.length + coverage.priorityUnused.length;
   const description = input.mode === "dish"
     ? "完整保留可信来源中的菜名、配方与操作顺序，不使用生成模板改写。"
     : recipes.length > 1
     ? `由 ${recipes.length} 道真实菜谱组成，分别烹饪，不把无关食材强行混成一道菜。`
     : "完整保留真实菜名、配方与操作顺序，不使用生成式模板造菜。";
-  const score = baseScore + coverage.priorityUsed.length * 80 + coverage.used.length * 28 - coverage.unused.length * 4 - Math.max(0, totalMinutes - input.maxMinutes) * 2;
+  const score = baseScore + coverage.used.length * 28 - coverage.unused.length * 80 - Math.max(0, totalMinutes - input.maxMinutes) * 2;
   return {
     id: uid("plan"),
     title,
@@ -107,9 +106,7 @@ export function createPlanFromRecipes(recipes: Recipe[], input: PlanInput, baseS
       : ["真实菜谱", "零新增主食材", recipes.length > 1 ? "分开烹饪" : "单菜方案"],
     rationale: input.mode === "dish"
       ? `保留“${title}”的真实技法与耗时；时间预算只触发提示，不会篡改做法。`
-      : priorityTotal
-      ? `优先食材覆盖 ${coverage.priorityUsed.length}/${priorityTotal}；本次使用 ${coverage.used.length} 种现有食材，未使用的食材会明确保留。`
-      : `本次使用 ${coverage.used.length} 种现有食材；未使用的库存不会被强行塞进菜里。`,
+      : `本次方案覆盖 ${coverage.used.length} 种主要食材；默认调料按家庭常备处理。`,
     coverage,
     fitsTime,
     timeMessage: fitsTime
@@ -128,11 +125,8 @@ export function buildIngredientPlans(matches: RecipeMatch[], input: PlanInput, l
       .map((set) => createPlanFromRecipes(set.map((match) => match.recipe), input, set.reduce((sum, match) => sum + match.score, 0)));
 
   return variants
-    .filter((plan) => plan.coverage.missing.length === 0 && plan.coverage.blockedSeasonings.length === 0)
+    .filter((plan) => plan.coverage.missing.length === 0 && plan.coverage.blockedSeasonings.length === 0 && plan.coverage.unused.length === 0)
     .sort((left, right) => {
-      const leftPriority = left.coverage.priorityUsed.length - left.coverage.priorityUnused.length;
-      const rightPriority = right.coverage.priorityUsed.length - right.coverage.priorityUnused.length;
-      if (leftPriority !== rightPriority) return rightPriority - leftPriority;
       if (left.fitsTime !== right.fitsTime) return left.fitsTime ? -1 : 1;
       if (left.coverage.used.length !== right.coverage.used.length) return right.coverage.used.length - left.coverage.used.length;
       return right.score - left.score;

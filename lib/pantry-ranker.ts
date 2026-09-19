@@ -12,7 +12,6 @@ export interface RecipeMatch {
   required: string[];
   matched: string[];
   availableUsed: string[];
-  priorityUsed: string[];
   pantryUsed: string[];
   specialtySeasonings: string[];
   blockedSeasonings: string[];
@@ -35,7 +34,6 @@ function preferenceBoost(recipe: Recipe, taste: string) {
 
 export function rankPantryRecipes(recipes: Recipe[], input: PlanInput) {
   const available = splitIngredientInput(input.ingredients);
-  const priority = splitIngredientInput(input.priorityIngredients);
   const unavailableSeasonings = splitIngredientInput(input.unavailableSeasonings);
 
   return recipes
@@ -43,7 +41,6 @@ export function rankPantryRecipes(recipes: Recipe[], input: PlanInput) {
       const requirements = extractRecipeRequirements(recipe.ingredients).filter((item) => !item.optional);
       const required = requirements.map((item) => item.name);
       const availableUsed = unique(available.filter((item) => required.some((requirement) => ingredientMatches(requirement, item))));
-      const priorityUsed = unique(priority.filter((item) => required.some((requirement) => ingredientMatches(requirement, item))));
       const pantryUsed = unique(DEFAULT_PANTRY.filter((item) =>
         required.some((requirement) => seasoningKind(requirement, unavailableSeasonings) === "default" && ingredientMatches(requirement, item)),
       ));
@@ -56,13 +53,12 @@ export function rankPantryRecipes(recipes: Recipe[], input: PlanInput) {
       const missing = unique(required.filter((requirement) =>
         !findMatchingIngredient(requirement, available) && seasoningKind(requirement, unavailableSeasonings) === null,
       ));
-      const matched = unique([...availableUsed, ...priorityUsed, ...pantryUsed, ...specialtySeasonings]);
+      const matched = unique([...availableUsed, ...pantryUsed, ...specialtySeasonings]);
       const unresolvedCount = missing.length + blockedSeasonings.length;
       const matchPercent = required.length ? Math.round(((required.length - unresolvedCount) / required.length) * 100) : 0;
       const timePenalty = Math.max(0, recipe.totalMinutes - input.maxMinutes) * 1.5;
       const sourceBoost = recipe.source.kind === "gold" ? 22 : 8;
       const score =
-        priorityUsed.length * 70 +
         availableUsed.length * 24 +
         matchPercent * 0.7 +
         sourceBoost +
@@ -76,7 +72,6 @@ export function rankPantryRecipes(recipes: Recipe[], input: PlanInput) {
         required,
         matched,
         availableUsed,
-        priorityUsed,
         pantryUsed,
         specialtySeasonings,
         blockedSeasonings,
@@ -86,7 +81,7 @@ export function rankPantryRecipes(recipes: Recipe[], input: PlanInput) {
         cookable: missing.length === 0 && blockedSeasonings.length === 0 && availableUsed.length > 0,
       };
     })
-    .filter((match) => match.availableUsed.length > 0 || match.priorityUsed.length > 0)
+    .filter((match) => match.availableUsed.length > 0)
     .sort((left, right) => right.score - left.score || right.recipe.confidence - left.recipe.confidence);
 }
 

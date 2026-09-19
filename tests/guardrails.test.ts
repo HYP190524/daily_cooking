@@ -17,8 +17,7 @@ import type { PlanInput, PlanOption } from "../lib/types";
 const input: PlanInput = {
   mode: "ingredients",
   dishName: "",
-  ingredients: "鸡腿、土豆、青菜、米饭",
-  priorityIngredients: "鸡腿、青菜",
+  ingredients: "鸡腿、土豆、青菜",
   unavailableSeasonings: "",
   planScope: "meal",
   dishCount: 2,

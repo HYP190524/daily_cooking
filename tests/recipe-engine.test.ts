@@ -13,7 +13,6 @@ function input(overrides: Partial<PlanInput> = {}): PlanInput {
     mode: "ingredients",
     dishName: "",
     ingredients: "鸡腿、土豆、青菜、米饭",
-    priorityIngredients: "鸡腿、青菜",
     unavailableSeasonings: "",
     planScope: "meal",
     dishCount: 2,
@@ -79,8 +78,8 @@ test("seasonings explicitly marked unavailable exclude dependent recipes", () =>
   assert.ok(chicken.blockedSeasonings.includes("料酒"));
 });
 
-test("meal planner creates realistic separate dishes and allows unused inventory", () => {
-  const query = input();
+test("meal planner creates separate dishes that cover the full inventory", () => {
+  const query = input({ ingredients: "鸡腿、土豆、青菜" });
   const plans = buildIngredientPlans(rankPantryRecipes(getTrustedRecipes(query), query), query, 2);
   assert.ok(plans.length > 0);
   assert.ok(plans.some((plan) => plan.title.includes("土豆烧鸡腿") && plan.title.includes("清炒青菜")));
@@ -89,11 +88,22 @@ test("meal planner creates realistic separate dishes and allows unused inventory
     assert.ok(plan.recipes.length <= 2);
     assert.ok(plan.recipes.every((recipe) => ["gold", "howtocook"].includes(recipe.source.kind)));
   }
-  assert.ok(plans.some((plan) => plan.coverage.unused.includes("米饭")));
+  assert.ok(plans.every((plan) => plan.coverage.unused.length === 0));
+});
+
+test("single-dish mode cannot silently drop a required inventory item", () => {
+  const complete = input({ ingredients: "鸡腿、土豆", planScope: "single", dishCount: 1 });
+  const completePlans = buildIngredientPlans(rankPantryRecipes(getTrustedRecipes(complete), complete), complete, 2);
+  assert.ok(completePlans.some((plan) => plan.title.includes("土豆烧鸡腿")));
+  assert.ok(completePlans.every((plan) => plan.coverage.unused.length === 0));
+
+  const beefQuery = input({ ingredients: "牛肉、土豆、胡萝卜", planScope: "single", dishCount: 1 });
+  const beefPlans = buildIngredientPlans(rankPantryRecipes(getTrustedRecipes(beefQuery), beefQuery), beefQuery, 2);
+  assert.ok(beefPlans.every((plan) => plan.coverage.used.includes("牛肉")));
 });
 
 test("unknown inventory returns no false grounded match", () => {
-  const query = input({ ingredients: "火星岩石", priorityIngredients: "" });
+  const query = input({ ingredients: "火星岩石" });
   const matches = rankPantryRecipes(getTrustedRecipes(query), query);
   assert.equal(matches.length, 0);
 });
